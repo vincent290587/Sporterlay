@@ -22,6 +22,7 @@ from .ride import Ride
 from .settings import Settings, config_dir
 from .sources import AntSource, DemoSource
 from .workout import parse_zwo
+from .workoutdb import load_workout_db
 
 log = logging.getLogger("sporterlay")
 TICK_MS = 250
@@ -122,8 +123,11 @@ class App:
         if self.settings.click_enabled and not args.no_click:
             self.click = ClickController(self.signals.shift.emit, self.settings.click_side)
 
+        self._library = None  # (path, mtime, workouts) cache
         wo = args.workout or self.settings.last_workout
-        if wo and Path(wo).exists():
+        if wo and wo.startswith("lib:"):
+            self._restore_library_workout(wo[4:])
+        elif wo and Path(wo).exists():
             self.load_workout(wo, quiet=not args.workout)
 
         self.icon = make_icon()
@@ -231,6 +235,73 @@ class App:
         self.settings.last_workout = f"icu:{pw.event_id}"
         self.settings.save()
         self.overlay.refresh()
+
+    # ---- ai_advise workout library ---------------------------------------------------
+    def library_path(self) -> Path | None:
+        if self.settings.workout_db and Path(self.settings.workout_db).exists():
+            return Path(self.settings.workout_db)
+        for d in (config_dir(), resource_dir()):
+            for name in ("workouts.json", "workoutDB.bin"):
+                if (d / name).exists():
+                    return d / name
+        return None
+
+    def library(self):
+        path = self.library_path()
+        if path is None:
+            return None, []
+        mtime = path.stat().st_mtime
+        if not self._library or self._library[:2] != (path, mtime):
+            self._library = (path, mtime, load_workout_db(path))
+            log.info("Workout library %s: %d workouts", path, len(self._library[2]))
+        return path, self._library[2]
+
+    def _restore_library_workout(self, name: str):
+        try:
+            _, workouts = self.library()
+        except Exception as e:
+            log.warning("Could not read workout library: %s", e)
+            return
+        match = next((w for w in workouts if w.name == name), None)
+        if match:
+            self.ride.load_workout(match.workout)
+
+    def open_library(self):
+        from .library import LibraryDialog
+
+        try:
+            path, workouts = self.library()
+        except Exception as e:
+            QMessageBox.warning(None, "Sporterlay", f"Could not read the workout library:\n{e}")
+            path, workouts = None, []
+        if path is None or not workouts:
+            if not self.choose_library():
+                return
+            path, workouts = self.library()
+        dlg = LibraryDialog(workouts, lambda f: round(f * self.settings.ftp), path.name)
+        if dlg.exec() and dlg.chosen:
+            self.ride.load_workout(dlg.chosen.workout)
+            self.settings.last_workout = f"lib:{dlg.chosen.name}"
+            self.settings.save()
+            self.overlay.refresh()
+
+    def choose_library(self) -> bool:
+        start = str(Path(self.settings.workout_db).parent) if self.settings.workout_db else str(config_dir())
+        path, _ = QFileDialog.getOpenFileName(None, "Choose your workout library", start,
+                                              "Workout library (workouts.json workoutDB.bin *.json *.bin)")
+        if not path:
+            return False
+        try:
+            n = len(load_workout_db(path))
+        except Exception as e:
+            QMessageBox.warning(None, "Sporterlay", f"That file isn't a workout library:\n{e}")
+            return False
+        if n == 0:
+            QMessageBox.warning(None, "Sporterlay", "No workouts found in that file.")
+            return False
+        self.settings.workout_db = path
+        self.settings.save()
+        return True
 
     def set_api_key(self):
         key, ok = QInputDialog.getText(
@@ -364,6 +435,7 @@ class App:
             act("Load today's workout at startup", lambda: self._toggle("icu_autoload_today"),
                 checked=s.icu_autoload_today, menu=icu)
             act("Change API key…", self.set_api_key, menu=icu)
+        act("Workout library…", self.open_library)
         wm = m.addMenu("Local workout files")
         found = False
         for d in workout_dirs():
@@ -374,7 +446,8 @@ class App:
             act("(none found)", lambda: None, enabled=False, menu=wm)
         wm.addSeparator()
         act("Open workouts folder", lambda: self._open_folder(workout_dirs()[1]), menu=wm)
-        act("Load workout file…", self.pick_workout)
+        act("Load workout file…", self.pick_workout, menu=wm)
+        act("Choose workout library file…", self.choose_library, menu=wm)
         has = self.ride.player is not None
         act("Unload workout", self.unload_workout, enabled=has)
         m.addSeparator()

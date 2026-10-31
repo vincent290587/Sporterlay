@@ -32,7 +32,8 @@ class Settings:
     y: Optional[int] = None
     opacity: float = 0.92
     locked: bool = True
-    last_workout: str = ""
+    last_workout: str = ""  # .zwo path, "icu:<event id>" or "lib:<name>"
+    workout_db: str = ""  # ai_advise workouts.json / workoutDB.bin ("" = look in the config folder)
     fe_device_id: int = 0  # 0 = pair with the first trainer found
     hr_device_id: int = 0
     # intervals.icu (Settings → Developer settings → API key); athlete "0" = owner of the key

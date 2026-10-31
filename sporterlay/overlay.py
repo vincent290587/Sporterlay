@@ -367,24 +367,7 @@ class Overlay(QWidget):
 
     def paint_profile(self, p: QPainter, g: QRectF) -> None:
         player = self.ride.player
-        wo = player.workout
-        total = wo.duration
-        top = max(1.3, max((s.peak for s in wo.segments), default=1.0) * 1.08)
-
-        def px(t: float) -> float:
-            return g.x() + g.width() * t / total
-
-        def py(frac: float) -> float:
-            return g.bottom() - g.height() * min(frac, top) / top
-
-        t = 0.0
-        for s in wo.segments:
-            self._paint_segment(p, s, t, px, py, g)
-            t += s.duration
-
-        # FTP reference line
-        p.setPen(QPen(QColor(255, 255, 255, 70), 1, Qt.PenStyle.DashLine))
-        p.drawLine(QPointF(g.x(), py(1.0)), QPointF(g.right(), py(1.0)))
+        px, py = draw_profile(p, g, player.workout)
 
         # dim the part already done and draw the actual power over it
         xpos = px(player.elapsed)
@@ -402,21 +385,45 @@ class Overlay(QWidget):
         p.drawPolygon(QPolygonF([QPointF(xpos - 5, g.y() - 8), QPointF(xpos + 5, g.y() - 8), QPointF(xpos, g.y() - 2)]))
         p.setBrush(Qt.BrushStyle.NoBrush)
 
-    def _paint_segment(self, p: QPainter, s: Segment, t0: float, px, py, g: QRectF) -> None:
-        x_a, x_b = px(t0), px(t0 + s.duration)
-        if s.start is None:
-            p.fillRect(QRectF(x_a, py(0.5), max(x_b - x_a - 0.5, 0.5), g.bottom() - py(0.5)), FREE)
-            return
-        # draw in slices so ramps get a colour gradient through the zones
-        slices = max(1, int((x_b - x_a) / 3)) if s.is_ramp else 1
-        for k in range(slices):
-            fa, fb = k / slices, (k + 1) / slices
-            pa, pb = s.start + (s.end - s.start) * fa, s.start + (s.end - s.start) * fb
-            xa, xb = x_a + (x_b - x_a) * fa, x_a + (x_b - x_a) * fb
-            gap = 0.5 if k == slices - 1 else 0.0  # thin separator between blocks
-            poly = QPolygonF([QPointF(xa, g.bottom()), QPointF(xa, py(pa)), QPointF(xb - gap, py(pb)),
-                              QPointF(xb - gap, g.bottom())])
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(zone_color((pa + pb) / 2))
-            p.drawPolygon(poly)
-        p.setBrush(Qt.BrushStyle.NoBrush)
+
+def draw_profile(p: QPainter, g: QRectF, wo):
+    """Draw a workout's zone-coloured profile into g; returns the (time→x, FTP fraction→y) mappers."""
+    total = wo.duration or 1.0
+    top = max(1.3, max((s.peak for s in wo.segments), default=1.0) * 1.08)
+
+    def px(t: float) -> float:
+        return g.x() + g.width() * t / total
+
+    def py(frac: float) -> float:
+        return g.bottom() - g.height() * min(frac, top) / top
+
+    t = 0.0
+    for s in wo.segments:
+        _draw_segment(p, s, t, px, py, g)
+        t += s.duration
+
+    # FTP reference line
+    p.setPen(QPen(QColor(255, 255, 255, 70), 1, Qt.PenStyle.DashLine))
+    p.drawLine(QPointF(g.x(), py(1.0)), QPointF(g.right(), py(1.0)))
+    return px, py
+
+
+def _draw_segment(p: QPainter, s: Segment, t0: float, px, py, g: QRectF) -> None:
+    x_a, x_b = px(t0), px(t0 + s.duration)
+    if s.start is None:
+        p.fillRect(QRectF(x_a, py(0.5), max(x_b - x_a - 0.5, 0.5), g.bottom() - py(0.5)), FREE)
+        return
+    # draw in slices so ramps get a colour gradient through the zones
+    slices = max(1, int((x_b - x_a) / 3)) if s.is_ramp else 1
+    for k in range(slices):
+        fa, fb = k / slices, (k + 1) / slices
+        pa, pb = s.start + (s.end - s.start) * fa, s.start + (s.end - s.start) * fb
+        xa, xb = x_a + (x_b - x_a) * fa, x_a + (x_b - x_a) * fb
+        # thin separator between blocks, only when there's room for it
+        gap = 0.5 if k == slices - 1 and x_b - x_a > 1.5 else 0.0
+        poly = QPolygonF([QPointF(xa, g.bottom()), QPointF(xa, py(pa)), QPointF(xb - gap, py(pb)),
+                          QPointF(xb - gap, g.bottom())])
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(zone_color((pa + pb) / 2))
+        p.drawPolygon(poly)
+    p.setBrush(Qt.BrushStyle.NoBrush)

@@ -79,6 +79,12 @@ The SPEED shown is the virtual speed in that gear. Set `real_chainring` / `real_
 the gear your bike is actually in on the trainer (default 50×17); the starting gear matches it.
 Rider + bike weight are sent to the trainer so its physics match.
 
+## Workout library (ai_advise database)
+Tray → **Workout library…** opens a browser for your ai_advise workout database: search by name, filter by
+zone and length, sort by time/TSS/IF, and preview the profile before riding it. Put `workouts.json`
+(preferred, since it includes ai_advise's TSS and zone labels) or `workoutDB.bin` in `%APPDATA%\Sporterlay`, or
+point to it with *Local workout files → Choose workout library file…*. The file is re-read when it changes.
+
 ## Local workouts
 Any Zwift-format `.zwo` file works (SteadyState, Warmup, Cooldown, Ramp, IntervalsT, FreeRide, MaxEffort).
 Drop files into the user workouts folder (tray → *Workouts → Open workouts folder*, i.e.
