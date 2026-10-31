@@ -32,6 +32,12 @@ class Ride:
             settings.gear = neutral_gear(self.ratios, self.real_ratio)
         self.grade = 0.0  # last grade sent in simulation mode
         self._last_grade_t = -1.0
+        # ERG soft start state
+        self.erg_engaged = False
+        self._spin_since: Optional[float] = None  # cadence above engage threshold since
+        self._slow_since: Optional[float] = None  # cadence below release threshold since
+        self._ramp_from = 0.0
+        self._ramp_t0 = 0.0
 
     # ---- workout ---------------------------------------------------------
     def load_workout(self, workout: Workout) -> None:
@@ -64,10 +70,55 @@ class Ride:
         self._control_trainer()  # apply now, not on the next tick
 
     @property
-    def erg_active(self) -> bool:
+    def erg_wanted(self) -> bool:
+        """The workout calls for ERG right now (ERG on, workout running, step has a target)."""
         p = self.player
         return (self.settings.erg and p is not None and not p.paused and not p.finished
                 and p.target_fraction() is not None)
+
+    @property
+    def erg_active(self) -> bool:
+        """ERG is actually holding the power (wanted, and the rider is spinning)."""
+        return self.erg_wanted and self.erg_engaged
+
+    @property
+    def erg_waiting(self) -> bool:
+        return self.erg_wanted and not self.erg_engaged
+
+    def _update_erg_engagement(self) -> None:
+        s, t = self.settings, self.telemetry
+        if not self.erg_wanted:
+            self.erg_engaged = False
+            self._spin_since = self._slow_since = None
+            return
+        cad, power = t.cadence, t.power or 0
+        if cad is None:  # trainer without cadence: fall back to "producing real power"
+            spinning, slow = power > 50, power <= 20
+        else:
+            spinning, slow = cad >= s.erg_engage_rpm, cad < s.erg_release_rpm
+        if not self.erg_engaged:
+            self._spin_since = (self._spin_since or self._now) if spinning else None
+            if self._spin_since is not None and self._now - self._spin_since >= s.erg_engage_s:
+                self.erg_engaged = True
+                self._slow_since = None
+                self._ramp_from = float(self.power_display or power)
+                self._ramp_t0 = self._now
+        else:
+            self._slow_since = (self._slow_since or self._now) if slow else None
+            if self._slow_since is not None and self._now - self._slow_since >= s.erg_release_s:
+                self.erg_engaged = False
+                self._spin_since = None
+
+    def erg_target(self) -> Optional[int]:
+        """Workout target, ramped in over erg_ramp_s right after ERG engages."""
+        target = self.target_watts()
+        if target is None:
+            return None
+        ramp = self.settings.erg_ramp_s
+        f = (self._now - self._ramp_t0) / ramp if ramp > 0 else 1.0
+        if f >= 1.0:
+            return target
+        return round(self._ramp_from + (target - self._ramp_from) * max(f, 0.0))
 
     @property
     def speed_kmh(self) -> Optional[float]:
@@ -138,12 +189,14 @@ class Ride:
                 if not self.trace or self.player.elapsed - self.trace[-1][0] >= 1.0:
                     self.trace.append((self.player.elapsed, t.power))
 
+        self._update_erg_engagement()
         self._control_trainer()
 
     def _control_trainer(self) -> None:
         self.source.configure(self.settings.weight_kg, self.settings.bike_weight_kg)
         if self.erg_active:
-            self.source.set_target_power(self.target_watts())
+            self.source.set_target_power(self.erg_target())
+            self._last_grade_t = -1.0  # resend sim grade at once when ERG lets go
             return
         # simulation mode with virtual gears; grade depends on speed, so refresh ~2x per second
         if self._now - self._last_grade_t < 0.5:

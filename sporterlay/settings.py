@@ -26,6 +26,13 @@ class Settings:
     weight_kg: float = 75.0
     power_avg_s: int = 3  # smoothing for the big power number (1 = instantaneous)
     erg: bool = True
+    # ERG soft start: only engage once the rider is spinning, ramp the target in, and let go
+    # again when cadence drops (otherwise starting from standstill means huge torque)
+    erg_engage_rpm: int = 60
+    erg_engage_s: float = 3.0
+    erg_release_rpm: int = 40
+    erg_release_s: float = 2.0
+    erg_ramp_s: float = 5.0
     intensity: int = 100  # % applied to workout targets
     scale: float = 1.0
     x: Optional[int] = None  # None = centred at top of primary screen

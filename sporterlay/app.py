@@ -214,7 +214,10 @@ class App:
             return self.source.status
         bits = []
         if self.ride.player and not self.ride.player.finished:
-            bits.append("ERG on" if self.settings.erg else "ERG off")
+            if self.ride.erg_waiting:
+                bits.append(f"ERG starts at {self.settings.erg_engage_rpm} rpm")
+            else:
+                bits.append("ERG on" if self.settings.erg else "ERG off")
         if not t.hr_connected:
             bits.append("no heart rate")
         if self.click and not self.click.connected:
