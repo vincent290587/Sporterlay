@@ -20,7 +20,7 @@ jobs:
         run: >
           pyinstaller --noconfirm --onefile --windowed --name Sporterlay
           --collect-all libusb_package --collect-submodules openant --collect-submodules usb --collect-all bleak --collect-submodules winrt
-          --add-data "workouts;workouts" launcher.py
+          --add-data "workouts;workouts" --add-data "workouts.json;." launcher.py
       - uses: actions/upload-artifact@v4
         with:
           name: Sporterlay-windows
