@@ -173,6 +173,7 @@ class App:
                 ord("H"): self.toggle_visible,
                 VK_UP: lambda: self.bump_intensity(+5),
                 VK_DOWN: lambda: self.bump_intensity(-5),
+                ord("I"): self.toggle_iso,
                 0x27: lambda: self.shift(+1),  # right arrow: harder gear
                 0x25: lambda: self.shift(-1),  # left arrow: easier gear
             })
@@ -213,7 +214,9 @@ class App:
         if not t.trainer_connected:
             return self.source.status
         bits = []
-        if self.ride.player and not self.ride.player.finished:
+        if self.ride.iso:
+            bits.append(f"Isokinetic {self.settings.iso_cadence} rpm ({self.ride.iso_speed_ms() * 3.6:.1f} km/h)")
+        elif self.ride.player and not self.ride.player.finished:
             if self.ride.erg_waiting:
                 bits.append(f"ERG starts at {self.ride.erg_thresholds()[0]} rpm")
             else:
@@ -228,6 +231,11 @@ class App:
 
     # ---- shifting --------------------------------------------------------------------
     def shift(self, delta: int):
+        if self.ride.iso:  # no gears in isokinetic mode: shifting changes the target cadence
+            rpm = self.ride.set_iso_cadence(self.settings.iso_cadence + (5 if delta > 0 else -5))
+            self.settings.save()
+            self.flash(f"Isokinetic {rpm} rpm")
+            return
         self.ride.shift(delta)
         if abs(delta) > 1:  # single shifts show in the GEAR cell; flag the jumps
             self.flash(f"Gear {self.settings.gear}" + (" (ERG active)" if self.ride.erg_active else ""))
@@ -406,6 +414,20 @@ class App:
             self.ride.player.back()
             self.flash("Previous interval" if self.ride.player.index() < before else "Interval restarted")
 
+    def toggle_iso(self):
+        self.ride.set_iso(not self.ride.iso)
+        if self.ride.iso:
+            rpm = self.ride.set_iso_cadence(self.settings.iso_cadence)
+            self.flash(f"Isokinetic {rpm} rpm")
+        else:
+            self.flash("Isokinetic off: " + ("ERG" if self.ride.erg_wanted else "normal riding"))
+
+    def set_iso_cadence(self, rpm: int):
+        rpm = self.ride.set_iso_cadence(rpm)
+        self.settings.save()
+        if self.ride.iso:
+            self.flash(f"Isokinetic {rpm} rpm")
+
     def toggle_erg(self):
         self.settings.erg = not self.settings.erg
         self.settings.save()
@@ -513,6 +535,15 @@ class App:
         act("Next interval\tCtrl+Alt+N", self.skip, enabled=has)
         act("Previous / restart interval\tCtrl+Alt+B", self.back, enabled=has)
         act("ERG mode\tCtrl+Alt+E", self.toggle_erg, checked=s.erg)
+        maker = getattr(self.source, "manufacturer_id", None)
+        note = "" if maker in (None, 89) else "  (needs a Tacx Neo)"
+        act(f"Isokinetic mode{note}\tCtrl+Alt+I", self.toggle_iso, checked=self.ride.iso)
+        lo, hi = self.ride.iso_cadence_range()
+        km = lambda rpm: self.ride._rpm_to_ms(rpm) * 3.6
+        isom = m.addMenu(f"Isokinetic cadence: {s.iso_cadence} rpm")
+        for rpm in sorted({lo, *range((lo + 4) // 5 * 5, hi + 1, 5), hi}):
+            act(f"{rpm} rpm  ({km(rpm):.1f} km/h)", lambda rpm=rpm: self.set_iso_cadence(rpm),
+                checked=rpm == s.iso_cadence, menu=isom)
         gm = m.addMenu(f"Gear {s.gear}/{len(self.ride.ratios)}   (Click or Ctrl+Alt+←/→)")
         act("Harder", lambda: self.shift(+1), menu=gm)
         act("Easier", lambda: self.shift(-1), menu=gm)

@@ -32,6 +32,7 @@ class Ride:
             settings.gear = neutral_gear(self.ratios, self.real_ratio)
         self.grade = 0.0  # last grade sent in simulation mode
         self._last_grade_t = -1.0
+        self.iso = False  # Tacx Neo isokinetic mode (opt-out from ERG / gears; not persisted)
         # ERG soft start state
         self.erg_engaged = False
         self._spin_since: Optional[float] = None  # cadence above engage threshold since
@@ -69,11 +70,37 @@ class Ride:
         self._last_grade_t = -1.0
         self._control_trainer()  # apply now, not on the next tick
 
+    # ---- isokinetic (Tacx Neo) ------------------------------------------------------------
+    ISO_MIN_MS, ISO_MAX_MS = 4.2, 8.4  # what the Neo accepts (~15–30 km/h)
+
+    def _rpm_to_ms(self, rpm: float) -> float:
+        return rpm * self.real_ratio * self.settings.wheel_m / 60
+
+    def iso_cadence_range(self) -> tuple[int, int]:
+        """Cadences reachable in isokinetic mode in the bike's real gear."""
+        k = 60 / (self.real_ratio * self.settings.wheel_m)
+        return int(-(-self.ISO_MIN_MS * k // 1)), int(self.ISO_MAX_MS * k)
+
+    def iso_speed_ms(self) -> float:
+        return min(self.ISO_MAX_MS, max(self.ISO_MIN_MS, self._rpm_to_ms(self.settings.iso_cadence)))
+
+    def set_iso_cadence(self, rpm: int) -> int:
+        lo, hi = self.iso_cadence_range()
+        self.settings.iso_cadence = max(lo, min(hi, rpm))
+        self._control_trainer()
+        return self.settings.iso_cadence
+
+    def set_iso(self, on: bool) -> None:
+        self.iso = on
+        self._last_grade_t = -1.0
+        self._update_erg_engagement()
+        self._control_trainer()
+
     @property
     def erg_wanted(self) -> bool:
         """The workout calls for ERG right now (ERG on, workout running, step has a target)."""
         p = self.player
-        return (self.settings.erg and p is not None and not p.paused and not p.finished
+        return (self.settings.erg and not self.iso and p is not None and not p.paused and not p.finished
                 and p.target_fraction() is not None)
 
     @property
@@ -148,7 +175,7 @@ class Ride:
         v = self.telemetry.speed_kmh
         if v is None:
             return None
-        return v if self.erg_active else v * self.gear_factor
+        return v if self.erg_active or self.iso else v * self.gear_factor
 
     # ---- derived values -----------------------------------------------------
     @property
@@ -218,6 +245,10 @@ class Ride:
 
     def _control_trainer(self) -> None:
         self.source.configure(self.settings.weight_kg, self.settings.bike_weight_kg)
+        if self.iso:
+            self.source.set_isokinetic(self.iso_speed_ms())
+            self._last_grade_t = -1.0
+            return
         if self.erg_active:
             self.source.set_target_power(self.erg_target())
             self._last_grade_t = -1.0  # resend sim grade at once when ERG lets go

@@ -250,6 +250,7 @@ class Overlay(QWidget):
             (1.05, "DISTANCE", f"{ride.distance_km:.1f}", "km", v, WHITE),
             (1.05, "TIME", fmt_time(ride.ride_time), "", v, WHITE),
             # gears only matter in simulation mode; dimmed while ERG holds the power
+            (0.85, "ISO RPM", str(self.settings.iso_cadence), "", v + 3, QColor(90, 200, 250)) if ride.iso else
             (0.85, "ERG" if ride.erg_active else "GEAR", str(self.settings.gear), "",
              v + 3, LABEL if ride.erg_active else QColor(255, 205, 60)),
         ]

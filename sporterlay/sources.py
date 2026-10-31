@@ -68,6 +68,7 @@ class AntSource:
         self._last_cmd: Optional[tuple] = None
         self._pending: Optional[tuple] = None
         self._rider_kg, self._bike_kg = 75.0, 9.0
+        self._iso_on = False
         self._config_dirty = False
         self._cmd_cv = threading.Condition()
         threading.Thread(target=self._sender, name="ant-tx", daemon=True).start()
@@ -136,7 +137,7 @@ class AntSource:
                     self._hr = (int(data.heart_rate), time.monotonic())
 
         def fe_found():
-            log.info("Trainer found: %s", fe)
+            log.info("Trainer found: %s (manufacturer id %s; Tacx = 89)", fe, fe.data["common"].manufacturer_id)
             self._fe = fe
             self._last_cmd = None  # resend current mode
             self._config_dirty = True
@@ -176,6 +177,16 @@ class AntSource:
 
     def set_free_ride(self, grade: float = 0.0) -> None:
         self._send(("sim", round(grade, 1)))
+
+    def set_isokinetic(self, speed_ms: float) -> None:
+        """Tacx Neo isokinetic mode: the trainer holds the flywheel at this speed (4.2–8.4 m/s)."""
+        self._send(("iso", int(round(min(8.4, max(4.2, speed_ms)) / 0.05))))
+
+    @property
+    def manufacturer_id(self) -> Optional[int]:
+        fe = self._fe
+        m = fe.data["common"].manufacturer_id if fe is not None else 0xFFFF
+        return None if m == 0xFFFF else m
 
     def configure(self, rider_kg: float, bike_kg: float) -> None:
         """Rider/bike mass for the trainer's simulation mode (sent when the trainer is found)."""
@@ -224,9 +235,18 @@ class AntSource:
         except Exception as e:
             log.warning("Trainer config failed: %s", e)
 
-    @staticmethod
-    def _send_now(fe, cmd: tuple) -> None:
+    def _send_now(self, fe, cmd: tuple) -> None:
         try:
+            # Tacx proprietary FE-C page 0xFC ("Neo modes"): [0xFC, 0, isokinetic on, speed in
+            # 0.05 m/s, 0, road surface (0 = off), intensity (0xFF = default), 0].
+            # Isokinetic overrides ERG / sim, so switch it off before going back to them.
+            if cmd[0] == "iso":
+                fe.send_acknowledged_data([0xFC, 0x00, 0x01, cmd[1], 0x00, 0x00, 0xFF, 0x00])
+                self._iso_on = True
+                return
+            if self._iso_on:
+                fe.send_acknowledged_data([0xFC, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00])
+                self._iso_on = False
             if cmd[0] == "erg":
                 fe.set_target_power(cmd[1])  # FE-C page 49
             else:
@@ -258,7 +278,7 @@ class DemoSource:
     trainer.
     """
 
-    WHEEL_M = 2.1
+    WHEEL_M = 2.096
     REAL_RATIO = 50 / 17
 
     def __init__(self, ftp: int = 250):
@@ -276,7 +296,11 @@ class DemoSource:
         t = time.monotonic() - self._t0
         cad = int(88 + 4 * math.sin(t / 7) + random.gauss(0, 1))
         v = cad * self.REAL_RATIO * self.WHEEL_M / 60  # m/s
-        if self._mode == "sim":
+        if self._mode == "iso":  # trainer holds the speed; the rider pushes hard against it
+            v = self._iso_speed
+            cad = int(v * 60 / (self.REAL_RATIO * self.WHEEL_M))
+            want = 320 + 25 * math.sin(t / 3)
+        elif self._mode == "sim":
             want = (self._mass * G_ACC * (self._grade / 100 + CRR) + AERO_K * v * v) * v
         else:
             want = self._target
@@ -290,6 +314,11 @@ class DemoSource:
 
     def set_free_ride(self, grade: float = 0.0) -> None:
         self._mode, self._grade = "sim", grade
+
+    def set_isokinetic(self, speed_ms: float) -> None:
+        self._mode, self._iso_speed = "iso", min(8.4, max(4.2, speed_ms))
+
+    manufacturer_id = 89  # pretend to be a Tacx
 
     def configure(self, rider_kg: float, bike_kg: float) -> None:
         self._mass = rider_kg + bike_kg

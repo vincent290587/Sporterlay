@@ -56,6 +56,10 @@ class Settings:
     real_chainring: int = 50  # gear the bike is actually in on the trainer
     real_cog: int = 17
     bike_weight_kg: float = 9.0
+    wheel_m: float = 2.096  # wheel circumference the trainer's speed is based on (700x25c)
+    # Tacx Neo isokinetic mode: target cadence in the real gear (the mode itself is never saved,
+    # so the trainer always starts in ERG / normal mode)
+    iso_cadence: int = 60
 
     @classmethod
     def load(cls) -> "Settings":

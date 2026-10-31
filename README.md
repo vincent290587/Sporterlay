@@ -84,10 +84,22 @@ Browser fullscreen (`F` on YouTube) is a borderless window on Windows, and the o
 | Ctrl+Alt+E | ERG on/off |
 | Ctrl+Alt+↑ / ↓ | Workout intensity ±5 % |
 | Ctrl+Alt+→ / ← | Shift harder / easier (same as the Click) |
+| Ctrl+Alt+I | Isokinetic mode on/off (Tacx Neo) |
 | Ctrl+Alt+L | Unlock to move (drag) / resize (scroll wheel), press again to lock |
 | Ctrl+Alt+H | Hide / show overlay |
 
 Clicking the tray icon also hides/shows the overlay.
+
+## Isokinetic mode (Tacx Neo)
+Tray → **Isokinetic mode** or **Ctrl+Alt+I** switches the Neo to isokinetic: it holds your cadence at the target
+and the resistance matches whatever force you put in, which is good for low-cadence force work or all-out
+efforts. It overrides ERG and the gears. A loaded workout keeps running (its clock follows your pedaling, as
+with ERG off), and switching it off goes back to ERG (with the soft start) or normal riding.
+- Target cadence: tray → *Isokinetic cadence*, or the Click paddles / d-pad (±5 rpm) while the mode is on.
+  The Neo works with a speed of 15–30 km/h, converted from the cadence using your real gear (`real_chainring` /
+  `real_cog`, `wheel_m`), so in 50×17 the range is about 41–81 rpm. Use a smaller real gear for lower cadences.
+- The overlay shows **ISO RPM** instead of the gear. The mode is never saved: Sporterlay always starts in ERG / normal.
+- It uses Tacx's proprietary FE-C page 0xFC. Other trainers ignore it.
 
 ## Virtual shifting
 Outside ERG the trainer runs in simulation mode, and Sporterlay sets the slope from your speed and the
