@@ -26,6 +26,19 @@ from .workoutdb import load_workout_db
 
 log = logging.getLogger("sporterlay")
 TICK_MS = 250
+FLASH_S = 2.0  # how long an action confirmation stays in the status line
+
+# Zwift Click v2 buttons other than the shift paddles -> App method (and argument)
+CLICK_ACTIONS = {
+    "a": ("toggle_pause",),
+    "b": ("skip",),
+    "y": ("bump_intensity", +5),
+    "z": ("bump_intensity", -5),
+    "dpad_up": ("shift", +4),
+    "dpad_down": ("shift", -4),
+    "dpad_left": ("back",),
+    "dpad_right": ("toggle_erg",),
+}
 
 
 def resource_dir() -> Path:
@@ -98,6 +111,7 @@ class Signals(QObject):
     """Hands results from worker threads (Bluetooth, HTTP) to the Qt thread."""
 
     shift = pyqtSignal(int)
+    button = pyqtSignal(str)
     click_pods = pyqtSignal(object)  # dict address -> device type, to persist
     icu_done = pyqtSignal(object, object, object, bool)  # workouts, athlete, error, startup
 
@@ -117,14 +131,15 @@ class App:
 
         self.signals = Signals()
         self.signals.shift.connect(self.shift)
+        self.signals.button.connect(self.click_button)
+        self._flash = ("", 0.0)
         self.signals.click_pods.connect(lambda pods: self._set("click_pods", pods))
         self.signals.icu_done.connect(self._icu_done)
         self.icu_workouts = []
         self.icu_status = ""
         self.click = None
         if self.settings.click_enabled and not args.no_click:
-            self.click = ClickController(self.signals.shift.emit,
-                                         lambda b: log.info("Click button %s (not mapped)", b),
+            self.click = ClickController(self.signals.shift.emit, self.signals.button.emit,
                                          known=self.settings.click_pods,
                                          on_known=self.signals.click_pods.emit)
 
@@ -178,7 +193,22 @@ class App:
         self.ride.tick(dt)
         self.overlay.refresh()
 
+    def flash(self, text: str) -> None:
+        """Briefly show an action confirmation in the status line."""
+        self._flash = (text, time.monotonic() + FLASH_S)
+        self.overlay.refresh()
+
+    def click_button(self, name: str):
+        action = CLICK_ACTIONS.get(name)
+        if action is None:
+            log.info("Click button %s (not mapped)", name)
+            return
+        getattr(self, action[0])(*action[1:])
+
     def status_text(self):
+        text, until = self._flash
+        if text and time.monotonic() < until:
+            return text
         t = self.ride.telemetry
         if not t.trainer_connected:
             return self.source.status
@@ -196,6 +226,8 @@ class App:
     # ---- shifting --------------------------------------------------------------------
     def shift(self, delta: int):
         self.ride.shift(delta)
+        if abs(delta) > 1:  # single shifts show in the GEAR cell; flag the jumps
+            self.flash(f"Gear {self.settings.gear}" + (" (ERG active)" if self.ride.erg_active else ""))
         self.overlay.refresh()
 
     # ---- intervals.icu ---------------------------------------------------------------
@@ -344,25 +376,42 @@ class App:
         self.settings.save()
         self.overlay.refresh()
 
+    def _workout_running(self) -> bool:
+        p = self.ride.player
+        if p is None:
+            self.flash("No workout loaded")
+            return False
+        if p.finished:
+            self.flash("Workout finished")
+            return False
+        return True
+
     def toggle_pause(self):
-        if self.ride.player:
-            self.ride.player.paused = not self.ride.player.paused
+        if self._workout_running():
+            p = self.ride.player
+            p.paused = not p.paused
+            self.flash("Workout paused" if p.paused else "Workout resumed")
 
     def skip(self):
-        if self.ride.player:
+        if self._workout_running():
             self.ride.player.skip()
+            self.flash("Workout finished" if self.ride.player.finished else "Next interval")
 
     def back(self):
-        if self.ride.player:
+        if self._workout_running():
+            before = self.ride.player.index()
             self.ride.player.back()
+            self.flash("Previous interval" if self.ride.player.index() < before else "Interval restarted")
 
     def toggle_erg(self):
         self.settings.erg = not self.settings.erg
         self.settings.save()
+        self.flash("ERG on" if self.settings.erg else "ERG off: gears active")
 
     def bump_intensity(self, d):
         self.settings.intensity = max(50, min(150, self.settings.intensity + d))
         self.settings.save()
+        self.flash(f"Intensity {self.settings.intensity} %")
 
     def toggle_lock(self):
         self.overlay.set_locked(not self.settings.locked)

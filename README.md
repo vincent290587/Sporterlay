@@ -49,7 +49,16 @@ Workouts with a fixed FTP (`ftpOverride` in the export) use that FTP, as in Zwif
 - Press a button on each pod to wake it. Sporterlay connects to every pod that's awake (about 10 s each).
   The left pod's connection carries both pods' buttons, so while it's connected the right one is ignored
   (no double shifts). With only the right pod awake you get its buttons only: press the left pod once.
-- Buttons: left pod = shift down (easier) + d-pad, right pod = shift up (harder) + A/B/Y/Z.
+- Buttons (each action is confirmed briefly in the overlay's status line):
+
+  | Left pod | Action | Right pod | Action |
+  |---|---|---|---|
+  | Paddle | Shift easier | Paddle | Shift harder |
+  | ↑ / ↓ | Jump 4 gears harder / easier | A | Pause / resume workout |
+  | ← | Restart interval (twice quickly: previous) | B | Next interval |
+  | → | ERG on / off | Y / Z | Intensity +5 % / −5 % |
+
+  The mapping is `CLICK_ACTIONS` in `sporterlay/app.py`.
 
 ### 5. Ride
 1. Wake the trainer (pedal a few strokes) and put the HR strap on. It pairs with the first trainer/strap it hears.
