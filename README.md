@@ -46,8 +46,10 @@ Workouts with a fixed FTP (`ftpOverride` in the export) use that FTP, as in Zwif
 - The PC needs Bluetooth LE.
 - The Click must have been **paired with the official Zwift app at least once**, otherwise it stays locked
   (the status line says so). Close Zwift / other apps so they don't hold the connection.
-- Press a button on the Click to wake it; Sporterlay connects to one pod (the right one by default,
-  `click_side` in settings) and both pods' buttons arrive over that connection.
+- Press a button on each pod to wake it. Sporterlay connects to every pod that's awake (about 10 s each).
+  The left pod's connection carries both pods' buttons, so while it's connected the right one is ignored
+  (no double shifts). With only the right pod awake you get its buttons only: press the left pod once.
+- Buttons: left pod = shift down (easier) + d-pad, right pod = shift up (harder) + A/B/Y/Z.
 
 ### 5. Ride
 1. Wake the trainer (pedal a few strokes) and put the HR strap on. It pairs with the first trainer/strap it hears.

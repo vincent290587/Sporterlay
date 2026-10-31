@@ -98,6 +98,7 @@ class Signals(QObject):
     """Hands results from worker threads (Bluetooth, HTTP) to the Qt thread."""
 
     shift = pyqtSignal(int)
+    click_pods = pyqtSignal(object)  # dict address -> device type, to persist
     icu_done = pyqtSignal(object, object, object, bool)  # workouts, athlete, error, startup
 
 
@@ -116,12 +117,16 @@ class App:
 
         self.signals = Signals()
         self.signals.shift.connect(self.shift)
+        self.signals.click_pods.connect(lambda pods: self._set("click_pods", pods))
         self.signals.icu_done.connect(self._icu_done)
         self.icu_workouts = []
         self.icu_status = ""
         self.click = None
         if self.settings.click_enabled and not args.no_click:
-            self.click = ClickController(self.signals.shift.emit, self.settings.click_side)
+            self.click = ClickController(self.signals.shift.emit,
+                                         lambda b: log.info("Click button %s (not mapped)", b),
+                                         known=self.settings.click_pods,
+                                         on_known=self.signals.click_pods.emit)
 
         self._library = None  # (path, mtime, workouts) cache
         wo = args.workout or self.settings.last_workout

@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import sys
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Optional
 
@@ -43,7 +43,7 @@ class Settings:
     icu_autoload_today: bool = True
     # virtual shifting (Zwift Click / Ctrl+Alt+←/→), used whenever the trainer isn't in ERG
     click_enabled: bool = True
-    click_side: str = "right"  # which Click v2 pod to connect to
+    click_pods: dict = field(default_factory=dict)  # Click pod address -> device type, filled automatically
     gears: int = 24
     gear: int = 0  # current gear, 0 = start at the neutral gear
     real_chainring: int = 50  # gear the bike is actually in on the trainer
