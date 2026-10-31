@@ -215,7 +215,7 @@ class App:
         bits = []
         if self.ride.player and not self.ride.player.finished:
             if self.ride.erg_waiting:
-                bits.append(f"ERG starts at {self.settings.erg_engage_rpm} rpm")
+                bits.append(f"ERG starts at {self.ride.erg_thresholds()[0]} rpm")
             else:
                 bits.append("ERG on" if self.settings.erg else "ERG off")
         if not t.hr_connected:

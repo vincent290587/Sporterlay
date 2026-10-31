@@ -85,6 +85,27 @@ class Ride:
     def erg_waiting(self) -> bool:
         return self.erg_wanted and not self.erg_engaged
 
+    @property
+    def erg_at_target(self) -> bool:
+        """ERG engaged and its soft-start ramp is finished."""
+        return self.erg_active and self._now - self._ramp_t0 >= self.settings.erg_ramp_s
+
+    @property
+    def clock_held(self) -> bool:
+        """Pedaling, but the workout clock waits for ERG to be back at the target."""
+        return self.pedaling and self.erg_wanted and not self.erg_at_target
+
+    def erg_thresholds(self) -> tuple[int, int]:
+        """(engage rpm, release rpm); lowered for steps with a low cadence target
+        (e.g. 50 rpm strength efforts), so ERG can come back without spinning up."""
+        s = self.settings
+        engage, release = s.erg_engage_rpm, s.erg_release_rpm
+        if self.player and not self.player.finished:
+            cad = self.player.current()[1].cadence
+            if cad:
+                engage, release = min(engage, cad - 10), min(release, cad - 15)
+        return engage, release
+
     def _update_erg_engagement(self) -> None:
         s, t = self.settings, self.telemetry
         if not self.erg_wanted:
@@ -95,7 +116,8 @@ class Ride:
         if cad is None:  # trainer without cadence: fall back to "producing real power"
             spinning, slow = power > 50, power <= 20
         else:
-            spinning, slow = cad >= s.erg_engage_rpm, cad < s.erg_release_rpm
+            engage, release = self.erg_thresholds()
+            spinning, slow = cad >= engage, cad < release
         if not self.erg_engaged:
             self._spin_since = (self._spin_since or self._now) if spinning else None
             if self._spin_since is not None and self._now - self._spin_since >= s.erg_engage_s:
@@ -181,15 +203,17 @@ class Ride:
             self._energy_j += (t.power or 0) * dt
             self.distance_km += (self.speed_kmh or 0) * dt / 3600
 
+        self._update_erg_engagement()
         if self.player:
             before = self.player.elapsed
-            self.player.tick(dt, self.pedaling)
+            # after a start or a stop, the clock waits until ERG is back at the target, so the
+            # soft start doesn't eat into the interval
+            self.player.tick(dt, self.pedaling and not self.clock_held)
             if self.player.elapsed > before and t.power is not None:
                 # keep ~1 sample per second for the trace
                 if not self.trace or self.player.elapsed - self.trace[-1][0] >= 1.0:
                     self.trace.append((self.player.elapsed, t.power))
 
-        self._update_erg_engagement()
         self._control_trainer()
 
     def _control_trainer(self) -> None:

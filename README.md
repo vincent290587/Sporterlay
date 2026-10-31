@@ -12,7 +12,10 @@ virtual gears when you're not following a workout.
 - Workout clock only runs while you pedal; ERG is released when the workout is paused, done, or in a free-ride step
 - ERG soft start: ERG only engages once you've spun at ≥ 60 rpm for 3 s (until then the trainer rides like a flat
   road in your current gear), ramps from your power to the target over 5 s, and lets go again if cadence stays
-  under 40 rpm for 2 s, so starting or restarting never means grinding against the full target
+  under 40 rpm for 2 s, so starting or restarting never means grinding against the full target.
+  For steps with a cadence target the thresholds follow it (e.g. 40 / 35 rpm for a 50 rpm strength step)
+- Stopping (e.g. for a drink) stops the workout clock at once; when you restart, the clock waits until ERG is
+  back at the target ("Clock waits for ERG"), so the soft start never eats into the interval
 - Virtual shifting (24 gears) whenever ERG isn't holding the power: Zwift Click or Ctrl+Alt+←/→
 
 ## Windows setup

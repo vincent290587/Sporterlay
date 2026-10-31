@@ -358,7 +358,14 @@ class Overlay(QWidget):
             left_txt = wo.name
         self.text(p, QRectF(x0, fy, (x1 - x0) * 0.62, 20), left_txt, 13, WHITE, True,
                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        state = "PAUSED" if player.paused else ("Start pedaling" if not player.started else "")
+        if player.paused:
+            state = "PAUSED"
+        elif ride.clock_held:
+            state = "Clock waits for ERG"
+        elif not player.started or (not ride.pedaling and not player.finished):
+            state = "Start pedaling"
+        else:
+            state = ""
         right = f"{state}   " if state else ""
         right += f"{fmt_time(max(wo.duration - player.elapsed, 0))} left"
         self.text(p, QRectF(x0 + (x1 - x0) * 0.4, fy, (x1 - x0) * 0.6, 20), right, 13,
