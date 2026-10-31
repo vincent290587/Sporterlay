@@ -1,0 +1,4 @@
+PyQt6>=6.6
+openant>=1.3
+pyusb>=1.2
+libusb-package>=1.0.26 ; sys_platform == "win32"

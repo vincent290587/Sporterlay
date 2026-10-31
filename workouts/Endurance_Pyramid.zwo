@@ -1,0 +1,16 @@
+<workout_file>
+    <author>Sporterlay</author>
+    <name>Endurance Pyramid</name>
+    <description>Zone 2 riding with a tempo pyramid in the middle. 75 min.</description>
+    <sportType>bike</sportType>
+    <workout>
+        <Warmup Duration="600" PowerLow="0.45" PowerHigh="0.68"/>
+        <SteadyState Duration="1200" Power="0.68" Cadence="88"/>
+        <Ramp Duration="300" PowerLow="0.70" PowerHigh="0.85"/>
+        <SteadyState Duration="300" Power="0.88"/>
+        <Ramp Duration="300" PowerLow="0.85" PowerHigh="0.70"/>
+        <SteadyState Duration="1200" Power="0.68" Cadence="88"/>
+        <FreeRide Duration="300" FlatRoad="1"/>
+        <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.40"/>
+    </workout>
+</workout_file>
