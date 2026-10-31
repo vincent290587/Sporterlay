@@ -67,6 +67,8 @@ class AntSource:
         self._stop = threading.Event()
         self._last_cmd: Optional[tuple] = None
         self._pending: Optional[tuple] = None
+        self._rider_kg, self._bike_kg = 75.0, 9.0
+        self._config_dirty = False
         self._cmd_cv = threading.Condition()
         threading.Thread(target=self._sender, name="ant-tx", daemon=True).start()
         self._thread = threading.Thread(target=self._run, name="ant", daemon=True)
@@ -137,6 +139,9 @@ class AntSource:
             log.info("Trainer found: %s", fe)
             self._fe = fe
             self._last_cmd = None  # resend current mode
+            self._config_dirty = True
+            with self._cmd_cv:
+                self._cmd_cv.notify()
 
         fe.on_device_data = on_fe
         fe.on_found = fe_found
@@ -172,10 +177,19 @@ class AntSource:
     def set_free_ride(self, grade: float = 0.0) -> None:
         self._send(("sim", round(grade, 1)))
 
+    def configure(self, rider_kg: float, bike_kg: float) -> None:
+        """Rider/bike mass for the trainer's simulation mode (sent when the trainer is found)."""
+        if (rider_kg, bike_kg) != (self._rider_kg, self._bike_kg):
+            self._rider_kg, self._bike_kg = rider_kg, bike_kg
+            self._config_dirty = True
+            with self._cmd_cv:
+                self._cmd_cv.notify()
+
     def _send(self, cmd: tuple) -> None:
         if self._fe is None or cmd == self._last_cmd:
             return
         self._last_cmd = cmd
+        log.debug("trainer command %s", cmd)
         with self._cmd_cv:
             self._pending = cmd  # only the latest command matters
             self._cmd_cv.notify()
@@ -184,12 +198,31 @@ class AntSource:
         # Acknowledged sends can block for a while, so they run on their own thread.
         while not self._stop.is_set():
             with self._cmd_cv:
-                while self._pending is None and not self._stop.is_set():
+                while self._pending is None and not self._config_dirty and not self._stop.is_set():
                     self._cmd_cv.wait(1.0)
                 cmd, self._pending = self._pending, None
             fe = self._fe
-            if cmd is not None and fe is not None:
+            if fe is None:
+                continue
+            if self._config_dirty:
+                self._config_dirty = False
+                self._send_config(fe, self._rider_kg, self._bike_kg)
+            if cmd is not None:
                 self._send_now(fe, cmd)
+
+    @staticmethod
+    def _send_config(fe, rider_kg: float, bike_kg: float) -> None:
+        from .shifting import WIND_K
+
+        try:
+            # page 55 user configuration: rider 0.01 kg, bike 0.05 kg (12 bit), wheel 0.70 m
+            u = int(round(rider_kg * 100))
+            b = int(round(bike_kg / 0.05)) & 0xFFF
+            fe.send_acknowledged_data([0x37, u & 0xFF, (u >> 8) & 0xFF, 0xFF, 0x0F | ((b & 0xF) << 4), b >> 4, 70, 0x00])
+            # page 50 wind resistance: coefficient 0.01 kg/m, no wind (127 = 0 km/h), drafting 1.00
+            fe.send_acknowledged_data([0x32, 0xFF, 0xFF, 0xFF, 0xFF, int(round(WIND_K * 100)), 127, 100])
+        except Exception as e:
+            log.warning("Trainer config failed: %s", e)
 
     @staticmethod
     def _send_now(fe, cmd: tuple) -> None:
@@ -198,9 +231,12 @@ class AntSource:
                 fe.set_target_power(cmd[1])  # FE-C page 49
             else:
                 # FE-C page 51 "track resistance": grade in 0.01 % with -200 % offset,
-                # rolling resistance 0xFF = trainer default.
+                # rolling resistance in 5e-5 units (must match shifting.CRR).
+                from .shifting import CRR
+
                 g = int(round((cmd[1] + 200.0) * 100))
-                fe.send_acknowledged_data([0x33, 0xFF, 0xFF, 0xFF, 0xFF, g & 0xFF, (g >> 8) & 0xFF, 0xFF])
+                crr = int(round(CRR / 5e-5))
+                fe.send_acknowledged_data([0x33, 0xFF, 0xFF, 0xFF, 0xFF, g & 0xFF, (g >> 8) & 0xFF, crr])
         except Exception as e:
             log.warning("Trainer command %s failed: %s", cmd, e)
 
@@ -215,28 +251,48 @@ class AntSource:
 
 
 class DemoSource:
-    """Fake rider that roughly follows the ERG target. For testing without hardware."""
+    """Fake rider for testing without hardware.
+
+    ERG: power follows the target. Simulation mode: the rider holds ~88 rpm in a
+    50x17, so trainer speed comes from cadence and power from the grade, like a real
+    trainer.
+    """
+
+    WHEEL_M = 2.1
+    REAL_RATIO = 50 / 17
 
     def __init__(self, ftp: int = 250):
         self.status = "Demo mode"
         self._target = ftp * 0.6
+        self._mode = "sim"
+        self._grade = 0.0
+        self._mass = 84.0
         self._t0 = time.monotonic()
         self._power = self._target
 
     def snapshot(self) -> Telemetry:
+        from .shifting import AERO_K, CRR, G_ACC
+
         t = time.monotonic() - self._t0
-        self._power += (self._target - self._power) * 0.35
-        p = max(0, int(self._power + random.gauss(0, 6)))
         cad = int(88 + 4 * math.sin(t / 7) + random.gauss(0, 1))
-        speed = 3.6 * (p / 0.9) ** (1 / 3) * 1.6 if p else 0.0
+        v = cad * self.REAL_RATIO * self.WHEEL_M / 60  # m/s
+        if self._mode == "sim":
+            want = (self._mass * G_ACC * (self._grade / 100 + CRR) + AERO_K * v * v) * v
+        else:
+            want = self._target
+        self._power += (max(0.0, want) - self._power) * 0.35
+        p = max(0, int(self._power + random.gauss(0, 6)))
         hr = int(95 + 0.28 * self._power + 3 * math.sin(t / 11))
-        return Telemetry(p, cad, speed, hr, True, True)
+        return Telemetry(p, cad, v * 3.6, hr, True, True)
 
     def set_target_power(self, watts: int) -> None:
-        self._target = watts
+        self._mode, self._target = "erg", watts
 
     def set_free_ride(self, grade: float = 0.0) -> None:
-        self._target = 170
+        self._mode, self._grade = "sim", grade
+
+    def configure(self, rider_kg: float, bike_kg: float) -> None:
+        self._mass = rider_kg + bike_kg
 
     def close(self) -> None:
         pass

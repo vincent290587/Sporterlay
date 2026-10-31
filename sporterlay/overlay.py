@@ -26,7 +26,7 @@ PANEL = QColor(12, 14, 20, 175)
 LABEL = QColor(170, 175, 185)
 WHITE = QColor(255, 255, 255)
 
-BASE_W = 660
+BASE_W = 730
 BAR_H = 84
 GAP = 8
 WORKOUT_H = 182
@@ -246,9 +246,12 @@ class Overlay(QWidget):
             (1.0, "HEART RATE", dash if t.heart_rate is None else str(t.heart_rate), "bpm", v,
              QColor(255, 95, 95) if t.heart_rate else WHITE),
             (0.95, "CADENCE", dash if t.cadence is None else str(t.cadence), "rpm", v, WHITE),
-            (1.15, "SPEED", dash if t.speed_kmh is None else f"{t.speed_kmh:.1f}", "km/h", v, WHITE),
+            (1.15, "SPEED", dash if ride.speed_kmh is None else f"{ride.speed_kmh:.1f}", "km/h", v, WHITE),
             (1.05, "DISTANCE", f"{ride.distance_km:.1f}", "km", v, WHITE),
             (1.05, "TIME", fmt_time(ride.ride_time), "", v, WHITE),
+            # gears only matter in simulation mode; dimmed while ERG holds the power
+            (0.85, "ERG" if ride.erg_active else "GEAR", str(self.settings.gear), "",
+             v + 3, LABEL if ride.erg_active else QColor(255, 205, 60)),
         ]
         total = sum(c[0] for c in cells)
         x = r.x() + 8
@@ -262,7 +265,7 @@ class Overlay(QWidget):
             if i == 0 and ride.avg_power is not None:
                 sub = f"AVG {ride.avg_power} W"
             self.text(p, QRectF(cell.x(), r.bottom() - 26, w, 18), sub, 11, LABEL, True)
-            if i in (1, 3):  # subtle separators between groups
+            if i in (1, 3, 6):  # subtle separators between groups
                 p.setPen(QPen(QColor(255, 255, 255, 40), 1))
                 p.drawLine(QPointF(x + w, r.y() + 16), QPointF(x + w, r.bottom() - 16))
             x += w
@@ -301,9 +304,18 @@ class Overlay(QWidget):
                 extra.append(f"@ {seg.cadence} rpm")
             if seg.is_ramp and tw is not None:
                 extra.append(f"{ride.watts_for(seg.start)} → {ride.watts_for(seg.end)} W")
+            if seg.target_range:
+                extra.append(f"{ride.watts_for(seg.target_range[0])}–{ride.watts_for(seg.target_range[1])} W")
             if self.settings.intensity != 100:
                 extra.append(f"{self.settings.intensity}% intensity")
-            self.text(p, QRectF(mid.x(), mid.y() + 4, mid.width(), 24), name, 18, WHITE, True,
+            if wo.ftp_override:
+                extra.append(f"FTP {wo.ftp_override} (workout)")
+            msg = seg.text_at(into)
+            if msg:  # workout text message takes the headline, Zwift-style
+                extra.insert(0, name)
+                name = msg
+            self.text(p, QRectF(mid.x(), mid.y() + 4, mid.width(), 24), name, 18,
+                      QColor(255, 205, 60) if msg else WHITE, True,
                       Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             self.text(p, QRectF(mid.x(), mid.y() + 26, mid.width(), 20),
                       "   ".join(extra) or f"{idx + 1} / {len(wo.segments)}", 13, LABEL, True,
@@ -379,7 +391,7 @@ class Overlay(QWidget):
         p.fillRect(QRectF(g.x(), g.y(), xpos - g.x(), g.height()), QColor(0, 0, 0, 120))
         trace = self.ride.trace
         if len(trace) > 1:
-            ftp = self.settings.ftp
+            ftp = self.ride.workout_ftp
             pts = QPolygonF([QPointF(px(ts), py(w / ftp)) for ts, w in trace])
             p.setPen(QPen(QColor(255, 255, 255, 220), 1.6))
             p.drawPolyline(pts)

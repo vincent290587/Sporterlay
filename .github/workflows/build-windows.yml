@@ -2,7 +2,7 @@ name: Build Windows exe
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -19,7 +19,7 @@ jobs:
       - name: Build
         run: >
           pyinstaller --noconfirm --onefile --windowed --name Sporterlay
-          --collect-all libusb_package --collect-submodules openant --collect-submodules usb
+          --collect-all libusb_package --collect-submodules openant --collect-submodules usb --collect-all bleak --collect-submodules winrt
           --add-data "workouts;workouts" launcher.py
       - uses: actions/upload-artifact@v4
         with:

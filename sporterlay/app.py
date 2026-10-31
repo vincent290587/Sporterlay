@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import logging
 import sys
+import threading
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import QAbstractNativeEventFilter, QTimer
+from PyQt6.QtCore import QAbstractNativeEventFilter, QObject, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QActionGroup, QColor, QIcon, QPainter, QPixmap, QFont
-from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMenu, QMessageBox, QSystemTrayIcon
+from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLineEdit, QMenu, QMessageBox,
+                             QSystemTrayIcon)
 
-from .overlay import Overlay
+from .click import ClickController
+from .intervals import IntervalsClient
+from .overlay import Overlay, fmt_time
 from .ride import Ride
 from .settings import Settings, config_dir
 from .sources import AntSource, DemoSource
@@ -88,6 +93,13 @@ class WinHotkeys(QAbstractNativeEventFilter):
             self._user32.UnregisterHotKey(None, i)
 
 
+class Signals(QObject):
+    """Hands results from worker threads (Bluetooth, HTTP) to the Qt thread."""
+
+    shift = pyqtSignal(int)
+    icu_done = pyqtSignal(object, object, object, bool)  # workouts, athlete, error, startup
+
+
 class App:
     def __init__(self, args):
         self.qapp = QApplication(sys.argv)
@@ -100,6 +112,15 @@ class App:
             self.settings.fe_device_id, self.settings.hr_device_id)
         self.ride = Ride(self.settings, self.source)
         self.overlay = Overlay(self.ride, self.status_text)
+
+        self.signals = Signals()
+        self.signals.shift.connect(self.shift)
+        self.signals.icu_done.connect(self._icu_done)
+        self.icu_workouts = []
+        self.icu_status = ""
+        self.click = None
+        if self.settings.click_enabled and not args.no_click:
+            self.click = ClickController(self.signals.shift.emit, self.settings.click_side)
 
         wo = args.workout or self.settings.last_workout
         if wo and Path(wo).exists():
@@ -128,6 +149,8 @@ class App:
                 ord("H"): self.toggle_visible,
                 VK_UP: lambda: self.bump_intensity(+5),
                 VK_DOWN: lambda: self.bump_intensity(-5),
+                0x27: lambda: self.shift(+1),  # right arrow: harder gear
+                0x25: lambda: self.shift(-1),  # left arrow: easier gear
             })
             self.qapp.installNativeEventFilter(self.hotkeys)
 
@@ -136,6 +159,8 @@ class App:
         self.timer.timeout.connect(self.tick)
         self.timer.start(TICK_MS)
         self.overlay.show()
+        if self.settings.icu_api_key:
+            self.refresh_intervals(startup=True)
 
     # ---- loop --------------------------------------------------------------------
     def tick(self):
@@ -153,7 +178,70 @@ class App:
             bits.append("ERG on" if self.settings.erg else "ERG off")
         if not t.hr_connected:
             bits.append("no heart rate")
+        if self.click and not self.click.connected:
+            bits.append(self.click.status)
+        if self.icu_status:
+            bits.append(self.icu_status)
         return " · ".join(bits) if bits else None
+
+    # ---- shifting --------------------------------------------------------------------
+    def shift(self, delta: int):
+        self.ride.shift(delta)
+        self.overlay.refresh()
+
+    # ---- intervals.icu ---------------------------------------------------------------
+    def refresh_intervals(self, startup=False):
+        key, athlete = self.settings.icu_api_key, self.settings.icu_athlete_id
+        self.icu_status = "intervals.icu: loading…"
+
+        def work():
+            client = IntervalsClient(key, athlete)
+            workouts = athlete_info = error = None
+            try:
+                workouts = client.planned_workouts()
+                athlete_info = client.athlete() if self.settings.icu_sync_ftp else None
+            except Exception as e:  # IntervalsError or anything unexpected
+                error = str(e)
+                log.warning("intervals.icu: %s", e)
+            self.signals.icu_done.emit(workouts, athlete_info, error, startup)
+
+        threading.Thread(target=work, name="intervals", daemon=True).start()
+
+    def _icu_done(self, workouts, athlete, error, startup):
+        if error:
+            self.icu_status = error
+            QTimer.singleShot(15000, lambda: setattr(self, "icu_status", ""))
+            return
+        self.icu_status = ""
+        self.icu_workouts = workouts or []
+        if athlete:
+            if athlete.ftp:
+                self.settings.ftp = athlete.ftp
+            if athlete.weight_kg:
+                self.settings.weight_kg = round(athlete.weight_kg, 1)
+            self.settings.save()
+        today = [w for w in self.icu_workouts if w.date == dt.date.today()]
+        busy = self.ride.player is not None and self.ride.player.started
+        if startup and today and self.settings.icu_autoload_today and not busy:
+            self.load_planned(today[0])
+            self.tray.showMessage("Sporterlay", f"Today's workout loaded: {today[0].name}", self.icon, 4000)
+
+    def load_planned(self, pw):
+        self.ride.load_workout(pw.workout)
+        self.settings.last_workout = f"icu:{pw.event_id}"
+        self.settings.save()
+        self.overlay.refresh()
+
+    def set_api_key(self):
+        key, ok = QInputDialog.getText(
+            None, "Sporterlay",
+            "intervals.icu API key\n(intervals.icu → Settings → Developer settings):",
+            QLineEdit.EchoMode.Password, self.settings.icu_api_key)
+        if ok:
+            self.settings.icu_api_key = key.strip()
+            self.settings.save()
+            if self.settings.icu_api_key:
+                self.refresh_intervals(startup=True)
 
     # ---- actions -------------------------------------------------------------------
     def load_workout(self, path, quiet=False):
@@ -228,6 +316,8 @@ class App:
         if self.hotkeys:
             self.hotkeys.unregister()
         self.source.close()
+        if self.click:
+            self.click.close()
         self.tray.hide()
         self.qapp.quit()
 
@@ -251,7 +341,30 @@ class App:
             menu.addAction(a)
             return a
 
-        wm = m.addMenu("Workouts")
+        icu = m.addMenu("intervals.icu")
+        if not s.icu_api_key:
+            act("Set API key…", self.set_api_key, menu=icu)
+        else:
+            today = dt.date.today()
+            if not self.icu_workouts:
+                act("(no planned rides in the next 7 days)", lambda: None, enabled=False, menu=icu)
+            for pw in self.icu_workouts:
+                if pw.date < today:
+                    day = "Yesterday"
+                elif pw.date == today:
+                    day = "Today"
+                else:
+                    day = pw.date.strftime("%a %d %b")
+                act(f"{day}:  {pw.name}  ({fmt_time(pw.duration_s)})", lambda pw=pw: self.load_planned(pw),
+                    menu=icu)
+            icu.addSeparator()
+            act("Refresh", self.refresh_intervals, menu=icu)
+            act("Use FTP and weight from intervals.icu", lambda: self._toggle("icu_sync_ftp"),
+                checked=s.icu_sync_ftp, menu=icu)
+            act("Load today's workout at startup", lambda: self._toggle("icu_autoload_today"),
+                checked=s.icu_autoload_today, menu=icu)
+            act("Change API key…", self.set_api_key, menu=icu)
+        wm = m.addMenu("Local workout files")
         found = False
         for d in workout_dirs():
             for f in sorted(d.glob("*.zwo")):
@@ -270,6 +383,13 @@ class App:
         act("Next interval\tCtrl+Alt+N", self.skip, enabled=has)
         act("Previous / restart interval\tCtrl+Alt+B", self.back, enabled=has)
         act("ERG mode\tCtrl+Alt+E", self.toggle_erg, checked=s.erg)
+        gm = m.addMenu(f"Gear {s.gear}/{len(self.ride.ratios)}   (Click or Ctrl+Alt+←/→)")
+        act("Harder", lambda: self.shift(+1), menu=gm)
+        act("Easier", lambda: self.shift(-1), menu=gm)
+        act("Back to neutral gear", self._neutral_gear, menu=gm)
+        gm.addSeparator()
+        cs = self.click.status if self.click else "Zwift Click disabled"
+        act(cs, lambda: None, enabled=False, menu=gm)
         im = m.addMenu(f"Intensity: {s.intensity}%   (Ctrl+Alt+↑/↓)")
         for v in (70, 80, 90, 95, 100, 105, 110, 120):
             act(f"{v}%", lambda v=v: self._set("intensity", v), checked=s.intensity == v, menu=im)
@@ -292,6 +412,14 @@ class App:
         act("Reset ride (time, distance, workout)", self.ride.reset)
         m.addSeparator()
         act("Quit", self.quit)
+
+    def _toggle(self, key):
+        self._set(key, not getattr(self.settings, key))
+
+    def _neutral_gear(self):
+        from .shifting import neutral_gear
+
+        self.shift(neutral_gear(self.ride.ratios, self.ride.real_ratio) - self.settings.gear)
 
     def _set(self, key, value):
         setattr(self.settings, key, value)
@@ -323,6 +451,7 @@ def main(argv=None) -> int:
     ap.add_argument("--demo", action="store_true", help="simulate a trainer and HR strap (no ANT+ needed)")
     ap.add_argument("--workout", help="path to a .zwo workout to load")
     ap.add_argument("--ftp", type=int, help="override FTP for this session")
+    ap.add_argument("--no-click", action="store_true", help="don't look for a Zwift Click")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
 

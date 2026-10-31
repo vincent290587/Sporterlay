@@ -9,6 +9,7 @@ from collections import deque
 from typing import Optional
 
 from .settings import Settings
+from .shifting import gear_ratios, neutral_gear, sim_grade
 from .sources import Telemetry
 from .workout import Workout, WorkoutPlayer
 
@@ -26,6 +27,11 @@ class Ride:
         self._now = 0.0
         # (workout seconds, watts) samples for drawing the power trace on the workout graph
         self.trace: list[tuple[float, int]] = []
+        self.ratios = gear_ratios(max(2, settings.gears))
+        if not 1 <= settings.gear <= len(self.ratios):
+            settings.gear = neutral_gear(self.ratios, self.real_ratio)
+        self.grade = 0.0  # last grade sent in simulation mode
+        self._last_grade_t = -1.0
 
     # ---- workout ---------------------------------------------------------
     def load_workout(self, workout: Workout) -> None:
@@ -42,6 +48,34 @@ class Ride:
         self._energy_j = 0.0
         if self.player:
             self.load_workout(self.player.workout)
+
+    # ---- virtual shifting -------------------------------------------------------
+    @property
+    def real_ratio(self) -> float:
+        return self.settings.real_chainring / max(1, self.settings.real_cog)
+
+    @property
+    def gear_factor(self) -> float:
+        return self.ratios[self.settings.gear - 1] / self.real_ratio
+
+    def shift(self, delta: int) -> None:
+        self.settings.gear = max(1, min(len(self.ratios), self.settings.gear + delta))
+        self._last_grade_t = -1.0
+        self._control_trainer()  # apply now, not on the next tick
+
+    @property
+    def erg_active(self) -> bool:
+        p = self.player
+        return (self.settings.erg and p is not None and not p.paused and not p.finished
+                and p.target_fraction() is not None)
+
+    @property
+    def speed_kmh(self) -> Optional[float]:
+        """Speed to show: virtual speed in the current gear when shifting is in effect."""
+        v = self.telemetry.speed_kmh
+        if v is None:
+            return None
+        return v if self.erg_active else v * self.gear_factor
 
     # ---- derived values -----------------------------------------------------
     @property
@@ -70,10 +104,15 @@ class Ride:
             return None
         return self.watts_for(self.player.target_fraction())
 
+    @property
+    def workout_ftp(self) -> int:
+        wo = self.player.workout if self.player else None
+        return (wo.ftp_override if wo and wo.ftp_override else None) or self.settings.ftp
+
     def watts_for(self, frac: Optional[float]) -> Optional[int]:
         if frac is None:
             return None
-        return round(frac * self.settings.ftp * self.settings.intensity / 100)
+        return round(frac * self.workout_ftp * self.settings.intensity / 100)
 
     # ---- update loop -------------------------------------------------------
     def tick(self, dt: float) -> None:
@@ -89,7 +128,7 @@ class Ride:
         if self.pedaling:
             self.ride_time += dt
             self._energy_j += (t.power or 0) * dt
-            self.distance_km += (t.speed_kmh or 0) * dt / 3600
+            self.distance_km += (self.speed_kmh or 0) * dt / 3600
 
         if self.player:
             before = self.player.elapsed
@@ -102,9 +141,15 @@ class Ride:
         self._control_trainer()
 
     def _control_trainer(self) -> None:
-        target = self.target_watts()
-        workout_active = self.player is not None and not self.player.paused and not self.player.finished
-        if self.settings.erg and workout_active and target is not None:
-            self.source.set_target_power(target)
-        else:
-            self.source.set_free_ride(0.0)
+        self.source.configure(self.settings.weight_kg, self.settings.bike_weight_kg)
+        if self.erg_active:
+            self.source.set_target_power(self.target_watts())
+            return
+        # simulation mode with virtual gears; grade depends on speed, so refresh ~2x per second
+        if self._now - self._last_grade_t < 0.5:
+            return
+        self._last_grade_t = self._now
+        v = (self.telemetry.speed_kmh or 0) / 3.6
+        mass = self.settings.weight_kg + self.settings.bike_weight_kg
+        self.grade = sim_grade(v, self.gear_factor, mass)
+        self.source.set_free_ride(self.grade)

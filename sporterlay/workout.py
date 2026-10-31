@@ -17,6 +17,14 @@ class Segment:
     end: Optional[float]
     cadence: Optional[int] = None
     label: str = ""
+    target_range: Optional[tuple[float, float]] = None  # (low, high) when the step is a range
+    texts: list[tuple[float, str, float]] = field(default_factory=list)  # (offset s, message, duration s)
+
+    def text_at(self, t: float) -> Optional[str]:
+        for off, msg, dur in self.texts:
+            if off <= t < off + dur:
+                return msg
+        return None
 
     def power_at(self, t: float) -> Optional[float]:
         """Target as FTP fraction, t seconds into the segment."""
@@ -41,6 +49,7 @@ class Workout:
     name: str
     segments: list[Segment] = field(default_factory=list)
     description: str = ""
+    ftp_override: Optional[int] = None  # <ftpOverride>: targets are relative to this FTP, not the rider's
 
     @property
     def duration(self) -> float:
@@ -66,8 +75,19 @@ def _i(el: ET.Element, *names: str) -> Optional[int]:
 
 def parse_zwo(path: str | Path) -> Workout:
     """Parse a Zwift-format .zwo workout file."""
-    root = ET.parse(path).getroot()
-    name = (root.findtext("name") or Path(path).stem).strip()
+    return _parse_root(ET.parse(path).getroot(), Path(path).stem)
+
+
+def parse_zwo_bytes(data: bytes, fallback_name: str = "Workout") -> Workout:
+    return _parse_root(ET.fromstring(data), fallback_name)
+
+
+def _parse_root(root: ET.Element, fallback_name: str) -> Workout:
+    name = (root.findtext("name") or fallback_name).strip()
+    try:
+        ftp_override = int(float(root.findtext("ftpOverride") or 0)) or None
+    except ValueError:
+        ftp_override = None
     desc = (root.findtext("description") or "").strip()
     body = root.find("workout")
     if body is None:
@@ -81,11 +101,16 @@ def parse_zwo(path: str | Path) -> Workout:
         lo = _f(el, "PowerLow")
         hi = _f(el, "PowerHigh")
 
+        texts = [(_f(t, "timeoffset") or 0.0, t.get("message", ""), _f(t, "duration") or 10.0)
+                 for t in el if t.tag.lower() == "textevent" and t.get("message")]
+        first = len(segs)
+
         if tag in ("steadystate", "solidstate"):
             p = _f(el, "Power")
+            rng = None
             if p is None and lo is not None and hi is not None:
-                p = (lo + hi) / 2
-            segs.append(Segment(dur, p, p, cad))
+                p, rng = (lo + hi) / 2, (min(lo, hi), max(lo, hi))
+            segs.append(Segment(dur, p, p, cad, target_range=rng))
         elif tag == "warmup":
             a, b = sorted((lo or 0.25, hi or 0.75))
             segs.append(Segment(dur, a, b, cad, "Warm up"))
@@ -108,12 +133,22 @@ def parse_zwo(path: str | Path) -> Workout:
             segs.append(Segment(dur, None, None, cad, "Free ride"))
         elif tag == "maxeffort":
             segs.append(Segment(dur, None, None, cad, "Max effort"))
-        # unknown tags (textevent etc.) are ignored
+        # unknown tags are ignored
+
+        # text messages: offsets are relative to the whole element, so hand each one to
+        # the segment it falls into (IntervalsT expands into several segments)
+        for off, msg, tdur in texts:
+            t0 = 0.0
+            for seg in segs[first:]:
+                if off < t0 + seg.duration:
+                    seg.texts.append((off - t0, msg, tdur))
+                    break
+                t0 += seg.duration
 
     segs = [s for s in segs if s.duration > 0]
     if not segs:
         raise ValueError("Workout has no segments")
-    return Workout(name, segs, desc)
+    return Workout(name, segs, desc, ftp_override)
 
 
 class WorkoutPlayer:

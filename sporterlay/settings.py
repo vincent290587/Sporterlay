@@ -35,6 +35,19 @@ class Settings:
     last_workout: str = ""
     fe_device_id: int = 0  # 0 = pair with the first trainer found
     hr_device_id: int = 0
+    # intervals.icu (Settings → Developer settings → API key); athlete "0" = owner of the key
+    icu_api_key: str = ""
+    icu_athlete_id: str = "0"
+    icu_sync_ftp: bool = True  # take FTP and weight from intervals.icu
+    icu_autoload_today: bool = True
+    # virtual shifting (Zwift Click / Ctrl+Alt+←/→), used whenever the trainer isn't in ERG
+    click_enabled: bool = True
+    click_side: str = "right"  # which Click v2 pod to connect to
+    gears: int = 24
+    gear: int = 0  # current gear, 0 = start at the neutral gear
+    real_chainring: int = 50  # gear the bike is actually in on the trainer
+    real_cog: int = 17
+    bike_weight_kg: float = 9.0
 
     @classmethod
     def load(cls) -> "Settings":
