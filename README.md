@@ -26,6 +26,8 @@ virtual gears when you're not following a workout.
   alone), and Spotify's current track shows in the overlay when it changes
 - Zwift on the same PC can use Sporterlay as its power meter, cadence sensor and heart-rate monitor (Direct Connect);
   MyWhoosh can use it for power and cadence
+- A Wahoo KICKR Headwind fan follows your heart rate and W′: it speeds up the moment an interval starts and
+  keeps cooling while your heart rate comes down
 
 ## Windows setup
 
@@ -151,6 +153,15 @@ next start. Toggle with *intervals.icu → Upload rides to intervals.icu*. Demo-
   **MyWhoosh** works the same way for power and cadence. It doesn't accept heart rate from a network device, so
   pair your strap with MyWhoosh over Bluetooth if it supports it. If MyWhoosh hangs at "pairing in progress",
   restart MyWhoosh, remove Sporterlay from its devices and pair again.
+- **Fan (Wahoo KICKR Headwind)**: tray → *Extras → Fan → Control the fan from HR and W′*. Close the Wahoo app
+  first (the fan accepts one connection). Sporterlay puts the fan in manual mode and runs it at whichever asks
+  for more: your heart rate, or how much of your W′ you've used. It speeds up at once, slows down at most every
+  10 s, runs at 20 % or more while you ride, and turns off 60 s after you stop. Click buttons can be bound to
+  *Fan +10 % / −10 %* (until your next stop). The curves are in `fan.json` next to `settings.json` (tray →
+  *Extras → Fan → Edit fan profile*), and changes apply within 2 s without a restart:
+  - `hr`: `[bpm, fan %]` points, `wbal`: `[fraction of W′ used, fan %]` points, straight lines in between
+  - `min` / `max` (% while riding), `step` (rounding), `min_hold_s` (slowing down), `off_after_stop_s`,
+    `hr_smoothing_s`
 
 ## Workout library (ai_advise database)
 Tray → **Workout library…** opens a browser for your ai_advise workout database: search by name, filter by

@@ -79,6 +79,9 @@ class Settings:
     now_playing: str = "change"  # Spotify track in the overlay: "off", "change" (for a few s) or "always"
     # offer raw power, cadence and HR to Zwift as a Direct Connect device (power meter + HRM only)
     zwift_share: bool = False
+    # Wahoo KICKR Headwind over BLE, speed from HR and W′ (curves in fan.json in this folder)
+    fan: bool = False
+    fan_address: str = ""  # filled in after the first connection
 
     @classmethod
     def load(cls) -> "Settings":

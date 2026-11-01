@@ -20,6 +20,7 @@ from .buttonmap import ButtonMap
 from .click import LEFT_POD, RIGHT_POD, ClickController
 from .cues import Beeper
 from .dircon import ZwiftShare
+from .fan import FanProfile, HeadwindController
 from .intervals import IntervalsClient
 from .media import AutoPause, MediaSessions, NowPlaying
 from .overlay import Overlay, _family, fmt_time
@@ -53,6 +54,8 @@ ACTIONS = {
     "int_down": ("Intensity −5 %", "Intensity −5%", "bump_intensity", -5),
     "overlay": ("Show / hide overlay", "Overlay", "toggle_visible"),
     "map": ("Show / hide this button map", "Button map", "toggle_button_map"),
+    "fan_up": ("Fan +10 %", "Fan +10%", "nudge_fan", +10),
+    "fan_down": ("Fan −10 %", "Fan −10%", "nudge_fan", -10),
 }
 DEFAULT_CLICK_MAP = {
     "shift_up": "harder", "shift_down": "easier",
@@ -76,6 +79,10 @@ def workout_dirs() -> list[Path]:
 
 def activities_dir() -> Path:
     return config_dir() / "activities"
+
+
+def fan_profile_path() -> Path:
+    return config_dir() / "fan.json"
 
 
 def make_icon(size: int = 64) -> QIcon:
@@ -140,6 +147,7 @@ class Signals(QObject):
     icu_done = pyqtSignal(object, object, object, bool)  # workouts, athlete, error, startup
     upload_done = pyqtSignal(int, object)  # rides uploaded, error (str) or None
     zwift = pyqtSignal(bool)  # Zwift connected / gone
+    fan_address = pyqtSignal(str)  # Headwind found: remember it
 
 
 class App:
@@ -171,6 +179,13 @@ class App:
         self.signals.upload_done.connect(self._upload_done)
         self.signals.zwift.connect(lambda on: self.flash("Zwift connected" if on else "Zwift disconnected"))
         self.zwift = ZwiftShare(self.signals.zwift.emit) if self.settings.zwift_share else None
+        self.signals.fan_address.connect(lambda a: self._set("fan_address", a))
+        self.fan_profile = FanProfile.load(fan_profile_path())
+        self._fan_mtime = self._profile_mtime()
+        self._fan_check = 0.0
+        self.fan = None
+        if self.settings.fan:
+            self._start_fan()
         self.icu_workouts = []
         self.icu_status = ""
         self.click = None
@@ -238,6 +253,7 @@ class App:
             t = self.ride.telemetry  # raw, not the smoothed power on the HUD
             self.zwift.update(t.power, t.cadence, t.heart_rate)
         self._media(now)
+        self._fan(now, dt)
         self._wbal_warning()
         self.overlay.refresh()
         self.button_map.refresh()
@@ -250,6 +266,51 @@ class App:
         self.media.pause(pause)
         self.media.play(resume)
         self.music.update(now, sessions)
+
+    # ---- fan ---------------------------------------------------------------------------
+    def _start_fan(self) -> None:
+        self.fan = HeadwindController(self.settings.fan_address, on_address=self.signals.fan_address.emit)
+
+    def _fan(self, now: float, dt: float) -> None:
+        if self.fan is None:
+            return
+        if now - self._fan_check > 2.0:  # pick up edits to fan.json without a restart
+            self._fan_check = now
+            m = self._profile_mtime()
+            if m != self._fan_mtime:
+                self._fan_mtime = m
+                self.fan_profile.adopt(FanProfile.load(fan_profile_path()))
+                self.flash("Fan profile reloaded")
+        t = self.ride.telemetry
+        self.fan.set_speed(self.fan_profile.update(now, dt, self.ride.pedaling, t.heart_rate,
+                                                   self.ride.wbal.fraction()))
+
+    @staticmethod
+    def _profile_mtime() -> float:
+        try:
+            return fan_profile_path().stat().st_mtime
+        except OSError:
+            return 0.0
+
+    def toggle_fan(self):
+        self._toggle("fan")
+        if self.settings.fan and self.fan is None:
+            self.fan_profile = FanProfile.load(fan_profile_path())
+            self._fan_mtime = self._profile_mtime()
+            self._start_fan()
+            self.flash("Fan on: looking for the KICKR Headwind")
+        elif not self.settings.fan and self.fan is not None:
+            self.fan.close()
+            self.fan = None
+            self.flash("Fan control off")
+
+    def nudge_fan(self, delta: int):
+        if self.fan is None:
+            self.flash("Fan control is off")
+            return
+        self.fan_profile.nudge(delta)
+        off = self.fan_profile.offset
+        self.flash(f"Fan {'+' if off >= 0 else '−'}{abs(off)} %" if self.ride.pedaling else "Fan: start pedaling first")
 
     def now_playing_text(self):
         return self.music.text(time.monotonic(), self.settings.now_playing)
@@ -425,6 +486,8 @@ class App:
             bits.append(self.click.status)
         if self.zwift and not self.zwift.connected:
             bits.append(self.zwift.status)
+        if self.fan and not self.fan.connected:
+            bits.append(self.fan.status)
         if self.icu_status:
             bits.append(self.icu_status)
         return " · ".join(bits) if bits else None
@@ -678,6 +741,8 @@ class App:
             self.click.close()
         if self.zwift:
             self.zwift.close()
+        if self.fan:
+            self.fan.close()
         self.tray.hide()
         self.qapp.quit()
 
@@ -795,6 +860,13 @@ class App:
             grp.addAction(act(label, lambda key=key: self._set("now_playing", key),
                               checked=s.now_playing == key, menu=npm))
         act("Share power, cadence and HR with Zwift", self.toggle_zwift_share, checked=s.zwift_share, menu=xm)
+        fm = xm.addMenu("Fan (KICKR Headwind)")
+        fan_state = ""
+        if self.fan:
+            fan_state = f"  ({self.fan.reported} %)" if self.fan.connected and self.fan.reported is not None \
+                else f"  ({self.fan.status.removeprefix('Fan: ')})"
+        act("Control the fan from HR and W′" + fan_state, self.toggle_fan, checked=s.fan, menu=fm)
+        act("Edit fan profile (fan.json)…", self._edit_fan_profile, menu=fm)
         rm = m.addMenu("Rides")
         act("Record rides (.fit)", self.toggle_recording, checked=s.record_rides, menu=rm)
         rec = self.recorder
@@ -859,6 +931,15 @@ class App:
         self.overlay.refresh()
         self.overlay.reset_position()
 
+    def _edit_fan_profile(self):
+        from PyQt6.QtCore import QUrl
+        from PyQt6.QtGui import QDesktopServices
+
+        path = fan_profile_path()
+        if not path.exists():
+            FanProfile.load(path)  # writes the defaults
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
     @staticmethod
     def _open_folder(path: Path):
         from PyQt6.QtCore import QUrl
@@ -868,6 +949,16 @@ class App:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
     def run(self) -> int:
+        # Ctrl+C / kill: quit properly, so the ride is saved and the fan and Click let go.
+        # Python only sees the signal when the interpreter runs, which the tick timer ensures.
+        import signal
+
+        def stop(*_):
+            QTimer.singleShot(0, self.quit)
+
+        signal.signal(signal.SIGINT, stop)
+        if hasattr(signal, "SIGTERM"):
+            signal.signal(signal.SIGTERM, stop)
         return self.qapp.exec()
 
 
