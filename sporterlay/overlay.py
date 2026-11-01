@@ -28,7 +28,7 @@ LABEL = QColor(170, 175, 185)
 WHITE = QColor(255, 255, 255)
 
 BASE_W = 730
-WBAL_W = 80  # extra width for the W′ balance cell
+WBAL_W = 46  # W′ balance battery panel, right of the top bar
 BAR_H = 84
 GAP = 8
 WORKOUT_H = 182
@@ -128,7 +128,7 @@ class Overlay(QWidget):
 
     @property
     def base_w(self) -> int:
-        return BASE_W + (WBAL_W if self.settings.show_wbal else 0)
+        return BASE_W + (GAP + WBAL_W if self.settings.show_wbal else 0)
 
     def _resize(self) -> None:
         s = self.settings.scale
@@ -219,10 +219,12 @@ class Overlay(QWidget):
         p.scale(self.settings.scale, self.settings.scale)
 
         y = 0
-        self.paint_bar(p, QRectF(0, y, self.base_w, BAR_H))
+        self.paint_bar(p, QRectF(0, y, BASE_W, BAR_H))
+        if self.settings.show_wbal:
+            self.paint_wbal(p, QRectF(BASE_W + GAP, y, WBAL_W, BAR_H))
         y += BAR_H + GAP
         if self.ride.player:
-            self.paint_workout(p, QRectF(0, y, self.base_w, WORKOUT_H))
+            self.paint_workout(p, QRectF(0, y, BASE_W, WORKOUT_H))
             y += WORKOUT_H + GAP
 
         status = self.status_text()
@@ -241,12 +243,12 @@ class Overlay(QWidget):
         pills = []  # (text, width, colour)
         sw = fm.horizontalAdvance(status) + 28 if status else 0
         if music:
-            room = min(380, self.base_w - sw - (8 if status else 0)) - 28
+            room = min(380, BASE_W - sw - (8 if status else 0)) - 28
             music = fm.elidedText(music, Qt.TextElideMode.ElideRight, int(room))
             pills.append((music, fm.horizontalAdvance(music) + 28, QColor(30, 215, 96)))
         if status:
             pills.append((status, sw, LABEL))
-        x = (self.base_w - sum(w for _, w, _ in pills) - 8 * (len(pills) - 1)) / 2
+        x = (BASE_W - sum(w for _, w, _ in pills) - 8 * (len(pills) - 1)) / 2
         for text, w, col in pills:
             r = QRectF(x, y, w, STATUS_H)
             path = QPainterPath()
@@ -266,7 +268,6 @@ class Overlay(QWidget):
             (1.5, f"POWER{'' if self.settings.power_avg_s <= 1 else f' ({self.settings.power_avg_s}s)'}",
              dash if power is None else str(power), "W", 46, WHITE),
             (0.8, "W/KG", dash if power is None else f"{power / self.settings.weight_kg:.1f}", "", v, WHITE),
-            *([self._wbal_cell(v)] if self.settings.show_wbal else []),
             (1.0, "HEART RATE", dash if t.heart_rate is None else str(t.heart_rate), "bpm", v,
              QColor(255, 95, 95) if t.heart_rate else WHITE),
             (0.95, "CADENCE", dash if t.cadence is None else str(t.cadence), "rpm", v, WHITE),
@@ -279,8 +280,7 @@ class Overlay(QWidget):
              v + 3, LABEL if ride.erg_active else QColor(255, 205, 60)),
         ]
         total = sum(c[0] for c in cells)
-        seps = (2, 4, 7) if self.settings.show_wbal else (1, 3, 6)
-        wbal = self.ride.wbal.fraction() if self.settings.show_wbal else None
+
         x = r.x() + 8
         inner_w = r.width() - 16
         for i, (wgt, label, val, unit, size, col) in enumerate(cells):
@@ -292,9 +292,8 @@ class Overlay(QWidget):
             if i == 0 and ride.avg_power is not None:
                 sub = f"AVG {ride.avg_power} W"
             self.text(p, QRectF(cell.x(), r.bottom() - 26, w, 18), sub, 11, LABEL, True)
-            if i == 2 and wbal is not None:  # W′ balance: little battery under the number
-                self._battery(p, QRectF(cell.center().x() - w * 0.3, r.bottom() - 31, w * 0.6, 4), wbal, col)
-            if i in seps:  # subtle separators between groups
+
+            if i in (1, 3, 6):  # subtle separators between groups
                 p.setPen(QPen(QColor(255, 255, 255, 40), 1))
                 p.drawLine(QPointF(x + w, r.y() + 16), QPointF(x + w, r.bottom() - 16))
             x += w
@@ -307,24 +306,32 @@ class Overlay(QWidget):
             return QColor(255, 205, 60)
         return QColor(240, 50, 30)
 
-    def _wbal_cell(self, v: int) -> tuple:
+    def paint_wbal(self, p: QPainter, r: QRectF) -> None:
+        """W′ balance as a little upright phone battery, filling from the bottom."""
+        self.panel(p, r)
         frac = self.ride.wbal.fraction()
-        if frac is None:
-            return (0.9, "W′ BAL", "--", "", v, WHITE)
-        col = self.wbal_color(frac)
-        if frac < 0.15 and int(time.monotonic() * 2) % 2:  # nearly empty: blink
-            col = WHITE
-        kj = max(0.0, self.ride.wbal.balance) / 1000
-        return (0.9, f"W′ {kj:.1f} kJ", str(max(0, round(frac * 100))), "%", v, col)
-
-    def _battery(self, p: QPainter, r: QRectF, frac: float, col: QColor) -> None:
-        path = QPainterPath()
-        path.addRoundedRect(r, 2, 2)
-        p.fillPath(path, QColor(255, 255, 255, 45))
-        fill = QRectF(r.x(), r.y(), r.width() * min(1.0, max(0.0, frac)), r.height())
-        path = QPainterPath()
-        path.addRoundedRect(fill, 2, 2)
-        p.fillPath(path, col)
+        bw, nub_h = 24, 4
+        body = QRectF(r.center().x() - bw / 2, r.y() + 8 + nub_h, bw, 36)
+        nub = QRectF(r.center().x() - 5, body.y() - nub_h, 10, nub_h + 1)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(255, 255, 255, 170))
+        p.drawRoundedRect(nub, 1.5, 1.5)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(QColor(255, 255, 255, 170), 2))
+        p.drawRoundedRect(body, 4, 4)
+        if frac is not None:
+            col = self.wbal_color(frac)
+            if frac < 0.15 and int(time.monotonic() * 2) % 2:  # nearly empty: blink
+                col = QColor(255, 255, 255, 60)
+            inner = body.adjusted(3, 3, -3, -3)
+            h = inner.height() * min(1.0, max(0.0, frac))
+            if h > 0.5:
+                path = QPainterPath()
+                path.addRoundedRect(QRectF(inner.x(), inner.bottom() - h, inner.width(), h), 2, 2)
+                p.fillPath(path, col)
+        pct = "--" if frac is None else str(max(0, round(frac * 100)))
+        self.text(p, QRectF(r.x(), body.bottom() + 3, r.width(), 15), pct, 13, WHITE, True)
+        self.text(p, QRectF(r.x(), r.bottom() - 17, r.width(), 13), "W′", 11, LABEL, True)
 
     def paint_workout(self, p: QPainter, r: QRectF) -> None:
         self.panel(p, r)

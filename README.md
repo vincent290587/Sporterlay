@@ -19,7 +19,7 @@ virtual gears when you're not following a workout.
 - Virtual shifting (24 gears) whenever ERG isn't holding the power: Zwift Click or Ctrl+Alt+←/→
 - Countdown beeps (3-2-1, then a high tone for harder or a low tone for easier) before each workout step change,
   plus a double blip 10 s before a hard effort
-- W′ balance gauge: how much of your anaerobic capacity is left, plus the predicted W′ balance over the workout
+- W′ balance battery beside the top bar: how much of your anaerobic capacity is left, plus the predicted W′ balance over the workout
   (dashed line on the profile)
 - Every ride is saved as a `.fit` file and uploaded to intervals.icu, paired with the planned workout
 - Windows: the browser video pauses when you stop pedaling and resumes when you start again (Spotify is left
