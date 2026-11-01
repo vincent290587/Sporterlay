@@ -49,6 +49,7 @@ class ButtonMap(QWidget):
         self.screen_of = screen
         self._family = _family()
         self._show_until = 0.0
+        self.suppressed = False  # the HUD is hidden: never show the map either
         self._highlight: tuple[Optional[str], float] = (None, 0.0)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
@@ -73,7 +74,7 @@ class ButtonMap(QWidget):
 
     def refresh(self) -> None:
         """Called by the app after each data tick."""
-        want = self.settings.show_button_map or time.monotonic() < self._show_until
+        want = (self.settings.show_button_map or time.monotonic() < self._show_until) and not self.suppressed
         if want:
             s = self.settings.scale
             self.setFixedSize(int(W * s), int(H * s))

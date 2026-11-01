@@ -150,6 +150,22 @@ Sporterlay then re-reads the FTP (with *Use FTP, weight and W′ from intervals.
 the result, e.g. "eFTP 287 W · FTP 270 → 287 W". Sporterlay never changes your FTP on intervals.icu. Needs an
 intervals.icu API key and upload turned on; ramp tests in demo mode give no result.
 
+## Second screen (phone / tablet)
+Tray → *Second screen → Show the ride on a phone or tablet*, then *Address and QR code…*: scan the code (or type
+the address, e.g. `http://192.168.1.75:8686/`) on a phone or tablet on the same Wi-Fi. Nothing to install: the
+browser shows power, target, heart rate, cadence, speed, time, gear/ERG, W′, the interval and what's next, the
+workout profile, messages and the ride summary card, updated 4 times a second, in portrait (phone on the bars)
+or landscape (tablet). If Windows asks about network access the first time, allow private networks.
+- **🔇 Beeps** plays the interval beeps on that device too (browsers need one tap before they may play sound).
+- **⛶** goes full screen (Android; on iPhone, "Add to Home Screen" gives the same).
+- Raise the device's screen timeout: a page served over plain HTTP on the home network isn't allowed to keep
+  the screen on by itself.
+- It reconnects by itself after a Wi-Fi drop or a Sporterlay restart. The port is `web_port` in `settings.json`.
+
+**Hide the HUD**: tray → *HUD*: **Shown**, **Hidden** (no overlay or button map at all; beeps, fan, recording
+and the second screen keep working), or **Hidden while a second screen is open** (the HUD comes back as soon
+as the last page closes or the phone drops off the Wi-Fi). Ctrl+Alt+H still hides/shows it within that mode.
+
 ## Extras
 - **Beeps**: tray → *Extras → Beeps before interval changes*.
 - **W′ balance**: tray → *Extras → W′ balance gauge*. CP is your FTP; W′ (default 20 kJ) comes from intervals.icu

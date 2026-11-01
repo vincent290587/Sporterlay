@@ -28,6 +28,7 @@ from .overlay import Overlay, _family, fmt_time
 from .ride import Ride
 from .settings import Settings, config_dir
 from .summary import summarize
+from .webscreen import WebScreen, ride_state, workout_key, workout_payload
 from .sources import AntSource, DemoSource
 from .workout import parse_zwo
 from .workoutdb import load_workout_db
@@ -86,6 +87,28 @@ def workout_dirs() -> list[Path]:
 
 def activities_dir() -> Path:
     return config_dir() / "activities"
+
+
+def qr_pixmap(text: str, box: int = 8, border: int = 4):
+    """QR code for the second screen's address, or None without the qrcode package."""
+    try:
+        import qrcode
+    except ImportError:
+        return None
+    qr = qrcode.QRCode(border=border, error_correction=qrcode.constants.ERROR_CORRECT_M)
+    qr.add_data(text)
+    qr.make(fit=True)
+    m = qr.get_matrix()
+    n = len(m)
+    pm = QPixmap(n * box, n * box)
+    pm.fill(QColor("white"))
+    p = QPainter(pm)
+    for y, row in enumerate(m):
+        for x, on in enumerate(row):
+            if on:
+                p.fillRect(x * box, y * box, box, box, QColor("black"))
+    p.end()
+    return pm
 
 
 def fan_profile_path() -> Path:
@@ -198,6 +221,10 @@ class App:
         self.fan = None
         if self.settings.fan:
             self._start_fan()
+        self._hud_on = True  # Ctrl+Alt+H / tray "Show overlay" (within the HUD mode)
+        self._cue_seq = 0
+        self._cue = None
+        self.web = WebScreen(self.settings.web_port) if self.settings.web_screen else None
         self.icu_workouts = []
         self.icu_status = ""
         self.click = None
@@ -248,7 +275,7 @@ class App:
         self.timer = QTimer()
         self.timer.timeout.connect(self.tick)
         self.timer.start(TICK_MS)
-        self.overlay.show()
+        self._apply_hud()
         if self.settings.icu_api_key:
             self.refresh_intervals(startup=True)
         QTimer.singleShot(0, self._recover_rides)
@@ -258,8 +285,11 @@ class App:
         now = time.monotonic()
         dt, self._last = min(now - self._last, 1.0), now
         self.ride.tick(dt)
-        if self.ride.cues and self.settings.beeps:
-            self.beeper.play(self.ride.cues[-1])  # one sound per tick; the step change wins over a tick
+        if self.ride.cues:
+            self._cue_seq += 1
+            self._cue = self.ride.cues[-1]  # one sound per tick; the step change wins over a tick
+            if self.settings.beeps:
+                self.beeper.play(self._cue)
         self._ramp_tick()
         self._record()
         self._card_tick(now)
@@ -269,8 +299,80 @@ class App:
         self._media(now)
         self._fan(now, dt)
         self._wbal_warning()
+        self._apply_hud()
         self.overlay.refresh()
         self.button_map.refresh()
+        self._web()
+
+    # ---- second screen and HUD visibility -------------------------------------------------
+    def _web(self) -> None:
+        if self.web is None or not self.web.connected:
+            return
+        r = self.ride
+        state = ride_state(r, self.status_text(), self.now_playing_text(), self.card(),
+                           (self._cue_seq, self._cue if self.settings.beeps else None))
+        self.web.publish(state, workout_key(r), lambda: workout_payload(r))
+
+    def hud_wanted(self) -> bool:
+        mode = self.settings.hud_mode
+        if mode == "hidden":
+            return False
+        if mode == "auto" and self.web is not None and self.web.connected:
+            return False
+        return self._hud_on
+
+    def _apply_hud(self) -> None:
+        want = self.hud_wanted()
+        if want != self.overlay.isVisible():
+            self.overlay.setVisible(want)
+        if self.button_map.suppressed == want:
+            self.button_map.suppressed = not want
+            self.button_map.refresh()
+
+    def set_hud_mode(self, mode: str) -> None:
+        self._set("hud_mode", mode)
+        self._hud_on = True
+        self._apply_hud()
+        if mode == "auto" and self.web is None:
+            self.flash("Turn on the second screen too (tray → Second screen)")
+
+    def toggle_web_screen(self):
+        self._toggle("web_screen")
+        if self.settings.web_screen and self.web is None:
+            self.web = WebScreen(self.settings.web_port)
+            if self.web.error:
+                self.flash(self.web.error)
+            else:
+                self.show_web_address()
+        elif not self.settings.web_screen and self.web is not None:
+            self.web.close()
+            self.web = None
+            self.flash("Second screen off")
+        self._apply_hud()
+
+    def show_web_address(self):
+        if self.web is None:
+            return
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QDialog, QLabel, QVBoxLayout
+
+        url = self.web.url
+        dlg = QDialog()
+        dlg.setWindowTitle("Sporterlay: second screen")
+        lay = QVBoxLayout(dlg)
+        qr = qr_pixmap(url)
+        if qr is not None:
+            img = QLabel()
+            img.setPixmap(qr)
+            img.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lay.addWidget(img)
+        link = QLabel(f'<p style="font-size:20px"><b>{url}</b></p>')
+        link.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        link.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lay.addWidget(link)
+        lay.addWidget(QLabel("Scan the code or type the address in the browser of a phone or tablet\n"
+                             "on the same Wi-Fi. If Windows asks about network access, allow private networks."))
+        dlg.exec()
 
     def _media(self, now: float) -> None:
         s = self.settings
@@ -675,6 +777,8 @@ class App:
         p = self.ride.player
         if self.ramp and p and p.workout is self.ramp.workout and self.ramp.in_ramp(p.elapsed) and not self.ramp.ended:
             bits.append("Ramp test: keep going, under 60 rpm ends it")
+        if self.web and self.web.error:
+            bits.append(self.web.error)
         if self.icu_status:
             bits.append(self.icu_status)
         return " · ".join(bits) if bits else None
@@ -900,7 +1004,11 @@ class App:
         self.overlay.set_locked(not self.settings.locked)
 
     def toggle_visible(self):
-        self.overlay.setVisible(not self.overlay.isVisible())
+        if self.settings.hud_mode == "hidden":
+            self.flash("The HUD is set to hidden (tray → HUD)")  # shows on the second screen
+            return
+        self._hud_on = not self.overlay.isVisible()
+        self._apply_hud()
 
     def ask_int(self, title, label, value, lo, hi):
         v, ok = QInputDialog.getInt(None, "Sporterlay", label, value, lo, hi)
@@ -932,6 +1040,8 @@ class App:
             self.zwift.close()
         if self.fan:
             self.fan.close()
+        if self.web:
+            self.web.close()
         self.tray.hide()
         self.qapp.quit()
 
@@ -1077,7 +1187,21 @@ class App:
         m.addSeparator()
         act("Lock position (click-through)\tCtrl+Alt+L", self.toggle_lock, checked=s.locked)
         act("Reset position and size", self._reset_pos)
-        act("Show overlay\tCtrl+Alt+H", self.toggle_visible, checked=self.overlay.isVisible())
+        hm = m.addMenu("HUD")
+        grp = QActionGroup(hm)
+        for key, label in (("shown", "Shown"), ("hidden", "Hidden"),
+                           ("auto", "Hidden while a second screen is open")):
+            grp.addAction(act(label, lambda key=key: self.set_hud_mode(key), checked=s.hud_mode == key, menu=hm))
+        hm.addSeparator()
+        act("Show overlay\tCtrl+Alt+H", self.toggle_visible, checked=self.overlay.isVisible(),
+            enabled=s.hud_mode != "hidden", menu=hm)
+        wm2 = m.addMenu("Second screen (phone / tablet)")
+        act("Show the ride on a phone or tablet", self.toggle_web_screen, checked=s.web_screen, menu=wm2)
+        act("Address and QR code…", self.show_web_address, enabled=self.web is not None, menu=wm2)
+        if self.web is not None:
+            n = self.web.connected
+            info = self.web.error or (f"{n} screen{'s' if n != 1 else ''} open" if n else self.web.url)
+            act(info, lambda: None, enabled=False, menu=wm2)
         act("Reset ride (saves it, then resets time, distance, workout)", self.reset_ride)
         m.addSeparator()
         act("Quit", self.quit)
