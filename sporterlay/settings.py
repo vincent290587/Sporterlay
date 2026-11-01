@@ -77,6 +77,8 @@ class Settings:
     autopause_delay_s: float = 3.0
     autopause_apps: list = field(default_factory=lambda: list(BROWSERS))  # app id substrings
     now_playing: str = "change"  # Spotify track in the overlay: "off", "change" (for a few s) or "always"
+    # offer raw power, cadence and HR to Zwift as a Direct Connect device (power meter + HRM only)
+    zwift_share: bool = False
 
     @classmethod
     def load(cls) -> "Settings":

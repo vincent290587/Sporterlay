@@ -19,6 +19,7 @@ from . import recorder
 from .buttonmap import ButtonMap
 from .click import LEFT_POD, RIGHT_POD, ClickController
 from .cues import Beeper
+from .dircon import ZwiftShare
 from .intervals import IntervalsClient
 from .media import AutoPause, MediaSessions, NowPlaying
 from .overlay import Overlay, _family, fmt_time
@@ -138,6 +139,7 @@ class Signals(QObject):
     click_pods = pyqtSignal(object)  # dict address -> device type, to persist
     icu_done = pyqtSignal(object, object, object, bool)  # workouts, athlete, error, startup
     upload_done = pyqtSignal(int, object)  # rides uploaded, error (str) or None
+    zwift = pyqtSignal(bool)  # Zwift connected / gone
 
 
 class App:
@@ -167,6 +169,8 @@ class App:
         self.signals.click_pods.connect(lambda pods: self._set("click_pods", pods))
         self.signals.icu_done.connect(self._icu_done)
         self.signals.upload_done.connect(self._upload_done)
+        self.signals.zwift.connect(lambda on: self.flash("Zwift connected" if on else "Zwift disconnected"))
+        self.zwift = ZwiftShare(self.signals.zwift.emit) if self.settings.zwift_share else None
         self.icu_workouts = []
         self.icu_status = ""
         self.click = None
@@ -230,6 +234,9 @@ class App:
         if self.ride.cues and self.settings.beeps:
             self.beeper.play(self.ride.cues[-1])  # one sound per tick; the step change wins over a tick
         self._record()
+        if self.zwift:
+            t = self.ride.telemetry  # raw, not the smoothed power on the HUD
+            self.zwift.update(t.power, t.cadence, t.heart_rate)
         self._media(now)
         self._wbal_warning()
         self.overlay.refresh()
@@ -416,6 +423,8 @@ class App:
             bits.append("no heart rate")
         if self.click and not self.click.connected:
             bits.append(self.click.status)
+        if self.zwift and not self.zwift.connected:
+            bits.append(self.zwift.status)
         if self.icu_status:
             bits.append(self.icu_status)
         return " · ".join(bits) if bits else None
@@ -667,6 +676,8 @@ class App:
         self.source.close()
         if self.click:
             self.click.close()
+        if self.zwift:
+            self.zwift.close()
         self.tray.hide()
         self.qapp.quit()
 
@@ -783,6 +794,7 @@ class App:
         for key, label in (("off", "Off"), ("change", "When the track changes"), ("always", "Always")):
             grp.addAction(act(label, lambda key=key: self._set("now_playing", key),
                               checked=s.now_playing == key, menu=npm))
+        act("Share power, cadence and HR with Zwift", self.toggle_zwift_share, checked=s.zwift_share, menu=xm)
         rm = m.addMenu("Rides")
         act("Record rides (.fit)", self.toggle_recording, checked=s.record_rides, menu=rm)
         rec = self.recorder
@@ -812,6 +824,16 @@ class App:
     def _toggle_wbal(self):
         self._toggle("show_wbal")
         self.overlay.refresh()  # width changes
+
+    def toggle_zwift_share(self):
+        self._toggle("zwift_share")
+        if self.settings.zwift_share and self.zwift is None:
+            self.zwift = ZwiftShare(self.signals.zwift.emit)
+            self.flash("Sharing with Zwift: pair “Sporterlay” in Zwift")
+        elif not self.settings.zwift_share and self.zwift is not None:
+            self.zwift.close()
+            self.zwift = None
+            self.flash("Stopped sharing with Zwift")
 
     def _toggle_upload(self):
         self._toggle("icu_auto_upload")

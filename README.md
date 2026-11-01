@@ -24,6 +24,7 @@ virtual gears when you're not following a workout.
 - Every ride is saved as a `.fit` file and uploaded to intervals.icu, paired with the planned workout
 - Windows: the browser video pauses when you stop pedaling and resumes when you start again (Spotify is left
   alone), and Spotify's current track shows in the overlay when it changes
+- Zwift on the same PC can use Sporterlay as its power meter, cadence sensor and heart-rate monitor (Direct Connect)
 
 ## Windows setup
 
@@ -140,6 +141,12 @@ next start. Toggle with *intervals.icu → Upload rides to intervals.icu*. Demo-
   It recognises Chrome, Edge, Firefox, Brave, Opera and Vivaldi. For another browser, add part of its app id
   (logged as "Media session found: app id …") to `autopause_apps` in `settings.json`.
 - **Spotify now playing** (Windows): tray → *Extras → Spotify now playing*: off, when the track changes, or always.
+- **Share with Zwift**: tray → *Extras → Share power, cadence and HR with Zwift*. In Zwift's pairing screen, pick
+  **Sporterlay** for Power Source, Cadence and Heart Rate. Sporterlay keeps the ANT+ stick and the trainer: Zwift
+  gets the raw values only and can't control anything, so ERG workouts and gears stay in Sporterlay, and Zwift's
+  climbs don't change the resistance. The status line says "waiting for Zwift" until Zwift connects. If Windows
+  asks whether to allow network access the first time, allow it on private networks (Zwift on the same PC works
+  either way; Zwift on another device needs it).
 
 ## Workout library (ai_advise database)
 Tray → **Workout library…** opens a browser for your ai_advise workout database: search by name, filter by

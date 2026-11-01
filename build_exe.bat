@@ -4,7 +4,7 @@ cd /d "%~dp0"
 if not exist .venv py -3 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt pyinstaller || exit /b 1
 .venv\Scripts\pyinstaller --noconfirm --onefile --windowed --name Sporterlay ^
-  --collect-all libusb_package --collect-submodules openant --collect-submodules usb --collect-all bleak --collect-submodules winrt ^
+  --collect-all libusb_package --collect-submodules openant --collect-submodules usb --collect-all bleak --collect-submodules winrt --collect-submodules zeroconf ^
   --add-data "workouts;workouts" --add-data "workouts.json;." launcher.py
 echo.
 echo Built dist\Sporterlay.exe
