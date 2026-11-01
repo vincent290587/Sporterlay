@@ -49,6 +49,22 @@ def fmt_time(s: float) -> str:
     return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
 
 
+def raise_topmost(w: QWidget) -> None:
+    """Windows: other topmost windows (or a browser going fullscreen) can end up above us."""
+    if not w.isVisible():
+        return
+    if sys.platform == "win32":
+        import ctypes
+
+        HWND_TOPMOST = -1
+        SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x1, 0x2, 0x10
+        ctypes.windll.user32.SetWindowPos(
+            int(w.winId()), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
+        )
+    else:
+        w.raise_()
+
+
 def _family() -> str:
     fams = set(QFontDatabase.families())
     for f in ("Segoe UI", "Inter", "Roboto", "Cantarell", "DejaVu Sans"):
@@ -75,7 +91,7 @@ class Overlay(QWidget):
         # Windows: other topmost windows (or a browser going fullscreen) can end up above us;
         # re-assert topmost every couple of seconds.
         self._topmost = QTimer(self)
-        self._topmost.timeout.connect(self._raise_topmost)
+        self._topmost.timeout.connect(lambda: raise_topmost(self))
         self._topmost.start(2000)
 
     # ---- window behaviour -----------------------------------------------------
@@ -99,20 +115,6 @@ class Overlay(QWidget):
         self.settings.save()
         self._apply_flags()
         self.update()
-
-    def _raise_topmost(self) -> None:
-        if not self.isVisible():
-            return
-        if sys.platform == "win32":
-            import ctypes
-
-            HWND_TOPMOST = -1
-            SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x1, 0x2, 0x10
-            ctypes.windll.user32.SetWindowPos(
-                int(self.winId()), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
-            )
-        else:
-            self.raise_()
 
     def _base_height(self) -> int:
         h = BAR_H

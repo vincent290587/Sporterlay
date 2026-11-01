@@ -40,7 +40,10 @@ V2_BITS = {
     0x10: "a", 0x20: "b", 0x40: "y", 0x80: "z",
     0x100: "shift_down", 0x1000: "shift_up",
 }
-SHIFT = {"shift_up": +1, "shift_down": -1}
+# Buttons per pod as (name, badge, description), in the order the button map lists them
+LEFT_POD = [("dpad_up", "▲", "D-pad up"), ("dpad_left", "◀", "D-pad left"), ("dpad_right", "▶", "D-pad right"),
+            ("dpad_down", "▼", "D-pad down"), ("shift_down", "−", "Shift")]
+RIGHT_POD = [("y", "Y", "Y"), ("z", "Z", "Z"), ("a", "A", "A"), ("b", "B", "B"), ("shift_up", "+", "Shift")]
 
 
 def _varint(data: bytes, i: int) -> tuple[int, int]:
@@ -86,12 +89,12 @@ class ClickController:
     """Runs a bleak asyncio loop in a background thread, keeps a connection to every Click
     pod that is awake, and reconnects forever.
 
-    on_shift(+1 | -1) and on_button(name) are called from that thread on each button *press*.
+    on_button(name) is called from that thread on each button *press*, shift paddles included
+    (names as in V2_BITS; what a button does is up to the app).
     """
 
-    def __init__(self, on_shift: Callable[[int], None], on_button: Optional[Callable[[str], None]] = None,
+    def __init__(self, on_button: Callable[[str], None],
                  known: Optional[dict[str, int]] = None, on_known: Optional[Callable[[dict], None]] = None):
-        self.on_shift = on_shift
         self.on_button = on_button
         # pods seen before (address -> device type); on Linux, released at startup if a previous
         # run left them connected (see _release_stale).
@@ -287,10 +290,7 @@ class ClickController:
         self._pressed[addr] = now
         for b in sorted(new):  # fire on press edges only
             try:
-                if b in SHIFT:
-                    self.on_shift(SHIFT[b])
-                elif self.on_button:
-                    self.on_button(b)
+                self.on_button(b)
             except Exception:
                 log.exception("Click button handler failed")
 

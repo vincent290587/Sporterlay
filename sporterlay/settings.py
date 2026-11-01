@@ -51,6 +51,8 @@ class Settings:
     # virtual shifting (Zwift Click / Ctrl+Alt+←/→), used whenever the trainer isn't in ERG
     click_enabled: bool = True
     click_pods: dict = field(default_factory=dict)  # Click pod address -> device type, filled automatically
+    click_map: dict = field(default_factory=dict)  # Click button -> action key, only where it differs from the default
+    show_button_map: bool = False  # corner panel showing what each Click button does
     gears: int = 24
     gear: int = 0  # current gear, 0 = start at the neutral gear
     real_chainring: int = 50  # gear the bike is actually in on the trainer

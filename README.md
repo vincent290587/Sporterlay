@@ -56,16 +56,20 @@ Workouts with a fixed FTP (`ftpOverride` in the export) use that FTP, as in Zwif
 - Press a button on each pod to wake it. Sporterlay connects to every pod that's awake (about 10 s each).
   The left pod's connection carries both pods' buttons, so while it's connected the right one is ignored
   (no double shifts). With only the right pod awake you get its buttons only: press the left pod once.
-- Buttons (each action is confirmed briefly in the overlay's status line):
+- Default buttons (each action is confirmed briefly in the overlay's status line):
 
   | Left pod | Action | Right pod | Action |
   |---|---|---|---|
-  | Paddle | Shift easier | Paddle | Shift harder |
+  | Shift | Shift easier | Shift | Shift harder |
   | ↑ / ↓ | Jump 4 gears harder / easier | A | Pause / resume workout |
   | ← | Restart interval (twice quickly: previous) | B | Next interval |
   | → | ERG on / off | Y / Z | Intensity +5 % / −5 % |
 
-  The mapping is `CLICK_ACTIONS` in `sporterlay/app.py`.
+- **Rebind any button**, shift buttons included: tray → *Zwift Click buttons* → the button → an action
+  (*Reset to defaults* undoes it all).
+- **Button map**: Ctrl+Alt+M (or tray → *Zwift Click buttons* → *Show button map*) shows what every
+  button does in the bottom-right corner of the overlay's screen. A pressed button lights up there, and
+  the map also pops up for a few seconds after you rebind something.
 
 ### 5. Ride
 1. Wake the trainer (pedal a few strokes) and put the HR strap on. It pairs with the first trainer/strap it hears.
@@ -84,8 +88,9 @@ Browser fullscreen (`F` on YouTube) is a borderless window on Windows, and the o
 | Ctrl+Alt+B | Restart interval (press twice quickly: previous) |
 | Ctrl+Alt+E | ERG on/off |
 | Ctrl+Alt+↑ / ↓ | Workout intensity ±5 % |
-| Ctrl+Alt+→ / ← | Shift harder / easier (same as the Click) |
+| Ctrl+Alt+→ / ← | Shift harder / easier |
 | Ctrl+Alt+I | Isokinetic mode on/off (Tacx Neo) |
+| Ctrl+Alt+M | Show / hide the Zwift Click button map |
 | Ctrl+Alt+L | Unlock to move (drag) / resize (scroll wheel), press again to lock |
 | Ctrl+Alt+H | Hide / show overlay |
 

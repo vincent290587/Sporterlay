@@ -15,7 +15,8 @@ from PyQt6.QtGui import QAction, QActionGroup, QColor, QIcon, QPainter, QPixmap,
 from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLineEdit, QMenu, QMessageBox,
                              QSystemTrayIcon)
 
-from .click import ClickController
+from .buttonmap import ButtonMap
+from .click import LEFT_POD, RIGHT_POD, ClickController
 from .intervals import IntervalsClient
 from .overlay import Overlay, fmt_time
 from .ride import Ride
@@ -28,16 +29,28 @@ log = logging.getLogger("sporterlay")
 TICK_MS = 250
 FLASH_S = 2.0  # how long an action confirmation stays in the status line
 
-# Zwift Click v2 buttons other than the shift paddles -> App method (and argument)
-CLICK_ACTIONS = {
-    "a": ("toggle_pause",),
-    "b": ("skip",),
-    "y": ("bump_intensity", +5),
-    "z": ("bump_intensity", -5),
-    "dpad_up": ("shift", +4),
-    "dpad_down": ("shift", -4),
-    "dpad_left": ("back",),
-    "dpad_right": ("toggle_erg",),
+# Actions a Zwift Click button can be bound to: key -> (menu label, button map label, App method, args...)
+ACTIONS = {
+    "none": ("Nothing", ""),
+    "harder": ("Harder gear", "Harder", "shift", +1),
+    "easier": ("Easier gear", "Easier", "shift", -1),
+    "harder4": ("4 gears harder", "+4 gears", "shift", +4),
+    "easier4": ("4 gears easier", "−4 gears", "shift", -4),
+    "neutral": ("Neutral gear", "Neutral gear", "_neutral_gear"),
+    "pause": ("Pause / resume workout", "Pause", "toggle_pause"),
+    "skip": ("Next interval", "Next interval", "skip"),
+    "back": ("Previous / restart interval", "Back", "back"),
+    "erg": ("ERG on / off", "ERG on/off", "toggle_erg"),
+    "iso": ("Isokinetic on / off", "Isokinetic", "toggle_iso"),
+    "int_up": ("Intensity +5 %", "Intensity +5%", "bump_intensity", +5),
+    "int_down": ("Intensity −5 %", "Intensity −5%", "bump_intensity", -5),
+    "overlay": ("Show / hide overlay", "Overlay", "toggle_visible"),
+    "map": ("Show / hide this button map", "Button map", "toggle_button_map"),
+}
+DEFAULT_CLICK_MAP = {
+    "shift_up": "harder", "shift_down": "easier",
+    "a": "pause", "b": "skip", "y": "int_up", "z": "int_down",
+    "dpad_up": "harder4", "dpad_down": "easier4", "dpad_left": "back", "dpad_right": "erg",
 }
 
 
@@ -110,7 +123,6 @@ class WinHotkeys(QAbstractNativeEventFilter):
 class Signals(QObject):
     """Hands results from worker threads (Bluetooth, HTTP) to the Qt thread."""
 
-    shift = pyqtSignal(int)
     button = pyqtSignal(str)
     click_pods = pyqtSignal(object)  # dict address -> device type, to persist
     icu_done = pyqtSignal(object, object, object, bool)  # workouts, athlete, error, startup
@@ -130,7 +142,6 @@ class App:
         self.overlay = Overlay(self.ride, self.status_text)
 
         self.signals = Signals()
-        self.signals.shift.connect(self.shift)
         self.signals.button.connect(self.click_button)
         self._flash = ("", 0.0)
         self.signals.click_pods.connect(lambda pods: self._set("click_pods", pods))
@@ -139,9 +150,10 @@ class App:
         self.icu_status = ""
         self.click = None
         if self.settings.click_enabled and not args.no_click:
-            self.click = ClickController(self.signals.shift.emit, self.signals.button.emit,
-                                         known=self.settings.click_pods,
+            self.click = ClickController(self.signals.button.emit, known=self.settings.click_pods,
                                          on_known=self.signals.click_pods.emit)
+        self.button_map = ButtonMap(self.settings, lambda b: ACTIONS[self.click_action(b)][1],
+                                    self._click_map_status, self.overlay.screen)
 
         self._library = None  # (path, mtime, workouts) cache
         wo = args.workout or self.settings.last_workout
@@ -174,6 +186,7 @@ class App:
                 VK_UP: lambda: self.bump_intensity(+5),
                 VK_DOWN: lambda: self.bump_intensity(-5),
                 ord("I"): self.toggle_iso,
+                ord("M"): self.toggle_button_map,
                 0x27: lambda: self.shift(+1),  # right arrow: harder gear
                 0x25: lambda: self.shift(-1),  # left arrow: easier gear
             })
@@ -193,18 +206,48 @@ class App:
         dt, self._last = min(now - self._last, 1.0), now
         self.ride.tick(dt)
         self.overlay.refresh()
+        self.button_map.refresh()
 
     def flash(self, text: str) -> None:
         """Briefly show an action confirmation in the status line."""
         self._flash = (text, time.monotonic() + FLASH_S)
         self.overlay.refresh()
 
+    # ---- Zwift Click buttons -----------------------------------------------------------
+    def click_action(self, button: str) -> str:
+        key = self.settings.click_map.get(button) or DEFAULT_CLICK_MAP.get(button, "none")
+        return key if key in ACTIONS else DEFAULT_CLICK_MAP.get(button, "none")
+
     def click_button(self, name: str):
-        action = CLICK_ACTIONS.get(name)
-        if action is None:
+        self.button_map.pressed(name)
+        _, _, *call = ACTIONS[self.click_action(name)]
+        if not call:
             log.info("Click button %s (not mapped)", name)
             return
-        getattr(self, action[0])(*action[1:])
+        getattr(self, call[0])(*call[1:])
+
+    def set_click_action(self, button: str, key: str):
+        if key == DEFAULT_CLICK_MAP.get(button, "none"):
+            self.settings.click_map.pop(button, None)
+        else:
+            self.settings.click_map[button] = key
+        self.settings.save()
+        self.button_map.flash(button)
+
+    def reset_click_map(self):
+        self.settings.click_map = {}
+        self.settings.save()
+        self.button_map.flash()
+
+    def toggle_button_map(self):
+        self.settings.show_button_map = not self.settings.show_button_map
+        self.settings.save()
+        self.button_map.flash(seconds=0)  # applies the toggle now, and cancels a pending flash
+
+    def _click_map_status(self):
+        if self.click is None:
+            return "disabled"
+        return None if self.click.connected else self.click.status.removeprefix("Click: ")
 
     def status_text(self):
         text, until = self._flash
@@ -551,6 +594,19 @@ class App:
         gm.addSeparator()
         cs = self.click.status if self.click else "Zwift Click disabled"
         act(cs, lambda: None, enabled=False, menu=gm)
+        bm = m.addMenu("Zwift Click buttons")
+        act("Show button map\tCtrl+Alt+M", self.toggle_button_map, checked=s.show_button_map, menu=bm)
+        for side, pod in (("Left", LEFT_POD), ("Right", RIGHT_POD)):
+            bm.addSeparator()
+            for name, _, desc in pod:
+                cur = self.click_action(name)
+                sub = bm.addMenu(f"{side} {desc}:  {ACTIONS[cur][0]}")
+                grp = QActionGroup(sub)
+                for key, (label, *_) in ACTIONS.items():
+                    grp.addAction(act(label, lambda name=name, key=key: self.set_click_action(name, key),
+                                      checked=key == cur, menu=sub))
+        bm.addSeparator()
+        act("Reset to defaults", self.reset_click_map, enabled=bool(s.click_map), menu=bm)
         im = m.addMenu(f"Intensity: {s.intensity}%   (Ctrl+Alt+↑/↓)")
         for v in (70, 80, 90, 95, 100, 105, 110, 120):
             act(f"{v}%", lambda v=v: self._set("intensity", v), checked=s.intensity == v, menu=im)
