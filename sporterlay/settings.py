@@ -69,6 +69,9 @@ class Settings:
     # W′ balance gauge; CP is taken as FTP. W′ comes from intervals.icu when FTP sync is on
     show_wbal: bool = True
     w_prime_j: int = 20000
+    # summary card in the overlay when a ride ends (also saved as a .png next to the .fit)
+    ride_card: bool = True
+    ride_card_s: int = 30
     # ride recording (.fit in the activities/ subfolder) and upload to intervals.icu
     record_rides: bool = True
     icu_auto_upload: bool = True

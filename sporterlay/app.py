@@ -21,11 +21,13 @@ from .click import LEFT_POD, RIGHT_POD, ClickController
 from .cues import Beeper
 from .dircon import ZwiftShare
 from .fan import FanProfile, HeadwindController
+from .ftptest import RampTest, is_ramp_test, ramp_workout
 from .intervals import IntervalsClient
 from .media import AutoPause, MediaSessions, NowPlaying
 from .overlay import Overlay, _family, fmt_time
 from .ride import Ride
 from .settings import Settings, config_dir
+from .summary import summarize
 from .sources import AntSource, DemoSource
 from .workout import parse_zwo
 from .workoutdb import load_workout_db
@@ -36,6 +38,9 @@ FLASH_S = 2.0  # how long an action confirmation stays in the status line
 RIDE_IDLE_END_S = 600  # a ride ends after this long without pedaling...
 RIDE_DONE_END_S = 30  # ...or this long once the workout is finished
 WBAL_WARN, WBAL_REARM = 0.25, 0.35  # W′ balance warning and when it can warn again
+CARD_PEDAL_HIDE_S = 5  # the ride card goes away when pedaling resumes, once shown this long
+EFTP_WAIT_S, EFTP_POLL_S = 180, 5  # how long to wait for intervals.icu to analyse a ramp test
+EFTP_FTP_TRIES = 6  # then how many times to re-read the FTP while intervals.icu may still raise it
 
 # Actions a Zwift Click button can be bound to: key -> (menu label, button map label, App method, args...)
 ACTIONS = {
@@ -54,6 +59,8 @@ ACTIONS = {
     "int_down": ("Intensity −5 %", "Intensity −5%", "bump_intensity", -5),
     "overlay": ("Show / hide overlay", "Overlay", "toggle_visible"),
     "map": ("Show / hide this button map", "Button map", "toggle_button_map"),
+    "card": ("Show / hide ride summary", "Ride summary", "toggle_card"),
+    "ramp_done": ("End ramp test (I'm done)", "Ramp done", "end_ramp_test"),
     "fan_up": ("Fan +10 %", "Fan +10%", "nudge_fan", +10),
     "fan_down": ("Fan −10 %", "Fan −10%", "nudge_fan", -10),
 }
@@ -145,7 +152,8 @@ class Signals(QObject):
     button = pyqtSignal(str)
     click_pods = pyqtSignal(object)  # dict address -> device type, to persist
     icu_done = pyqtSignal(object, object, object, bool)  # workouts, athlete, error, startup
-    upload_done = pyqtSignal(int, object)  # rides uploaded, error (str) or None
+    upload_done = pyqtSignal(object, object)  # [(fit name, activity id, meta)] uploaded, error (str) or None
+    eftp_done = pyqtSignal(object, object, object)  # eFTP (int) or None, AthleteInfo or None, error
     zwift = pyqtSignal(bool)  # Zwift connected / gone
     fan_address = pyqtSignal(str)  # Headwind found: remember it
 
@@ -162,7 +170,10 @@ class App:
             self.settings.fe_device_id, self.settings.hr_device_id)
         self.demo = args.demo
         self.ride = Ride(self.settings, self.source)
-        self.overlay = Overlay(self.ride, self.status_text, self.now_playing_text)
+        self.card_state = None  # end-of-ride card: dict(summary, status, fit, until, shown)
+        self.ramp = None  # RampTest while a ramp test workout is loaded
+        self._ramp_fit = None  # .fit name of the ramp test waiting for its eFTP
+        self.overlay = Overlay(self.ride, self.status_text, self.now_playing_text, self.card)
         self.beeper = Beeper(config_dir() / "sounds")
         self.media = MediaSessions()
         self.autopause = AutoPause()
@@ -177,6 +188,7 @@ class App:
         self.signals.click_pods.connect(lambda pods: self._set("click_pods", pods))
         self.signals.icu_done.connect(self._icu_done)
         self.signals.upload_done.connect(self._upload_done)
+        self.signals.eftp_done.connect(self._eftp_done)
         self.signals.zwift.connect(lambda on: self.flash("Zwift connected" if on else "Zwift disconnected"))
         self.zwift = ZwiftShare(self.signals.zwift.emit) if self.settings.zwift_share else None
         self.signals.fan_address.connect(lambda a: self._set("fan_address", a))
@@ -248,7 +260,9 @@ class App:
         self.ride.tick(dt)
         if self.ride.cues and self.settings.beeps:
             self.beeper.play(self.ride.cues[-1])  # one sound per tick; the step change wins over a tick
+        self._ramp_tick()
         self._record()
+        self._card_tick(now)
         if self.zwift:
             t = self.ride.telemetry  # raw, not the smoothed power on the HUD
             self.zwift.update(t.power, t.cadence, t.heart_rate)
@@ -334,7 +348,8 @@ class App:
         lap = (id(p), p.index()) if p and not p.finished else None  # one lap per workout step
         speed = r.speed_kmh
         self.recorder.sample(now, r.pedaling, t.power, t.heart_rate, t.cadence,
-                             None if speed is None else speed / 3.6, r.distance_km * 1000, lap)
+                             None if speed is None else speed / 3.6, r.distance_km * 1000, lap,
+                             r.target_watts())
         if self.recorder.active:
             idle = self.recorder.idle_s(now)
             if idle >= RIDE_IDLE_END_S or (p and p.finished and idle >= RIDE_DONE_END_S):
@@ -346,14 +361,174 @@ class App:
             return
         fit, meta = result
         self.flash(f"Ride saved ({fmt_time(meta['moving_s'])})")
-        self._queue_upload(fit, meta)
+        queued = self._queue_upload(fit, meta)
+        if not quitting:
+            self._show_card(fit, meta, queued)
         self.upload_pending(quitting)
 
-    def _queue_upload(self, fit, meta) -> None:
+    def _queue_upload(self, fit, meta) -> bool:
         if meta.get("demo"):  # never upload simulated rides
-            return
+            return False
         if self.settings.icu_auto_upload and self.settings.icu_api_key:
             recorder.queue_upload(fit, {**meta, "external_id": f"sporterlay-{int(meta['start'])}"})
+            return True
+        return False
+
+    # ---- end-of-ride card ------------------------------------------------------------
+    def _show_card(self, fit, meta, queued: bool) -> None:
+        s = self.settings
+        try:
+            sm = summarize(self.recorder.last_rows, s.ftp, s.w_prime_j, meta.get("name") or "", meta.get("start"))
+        except Exception:
+            log.exception("Ride summary failed")
+            return
+        if meta.get("demo"):
+            status = "Demo ride: saved, not uploaded"
+        elif queued:
+            status = "Uploading to intervals.icu…"
+        elif not s.icu_api_key:
+            status = "Saved (no intervals.icu key)"
+        else:
+            status = "Saved (upload is off)"
+        if meta.get("ramp"):
+            sm.note = "Ramp test: demo, no eFTP" if meta.get("demo") else (
+                "Ramp test: eFTP after upload" if queued else "Ramp test: upload it for an eFTP")
+        self.card_state = {"summary": sm, "status": status, "fit": fit.name, "png": fit.with_suffix(".png"),
+                           "until": 0.0, "shown": 0.0}
+        self._save_card_png()
+        if s.ride_card:
+            self.toggle_card(show=True)
+
+    def _save_card_png(self) -> None:
+        c = self.card_state
+        try:
+            self.overlay.render_card_png(c["summary"], c["status"], c["png"])
+        except Exception as e:
+            log.warning("Could not save the ride card: %s", e)
+
+    def _card_status(self, fit_name: str, status: str = "", note: str = "") -> None:
+        c = self.card_state
+        if not c or c["fit"] != fit_name:
+            return
+        if status:
+            c["status"] = status
+        if note:
+            c["summary"].note = note
+        self._save_card_png()
+        self.overlay.refresh()
+
+    def card(self):
+        c = self.card_state
+        if c and time.monotonic() < c["until"]:
+            return c["summary"], c["status"]
+        return None
+
+    def toggle_card(self, show=None):
+        c = self.card_state
+        if c is None:
+            self.flash("No ride saved yet")
+            return
+        if show is None:
+            show = self.card() is None
+        now = time.monotonic()
+        c["until"], c["shown"] = (now + self.settings.ride_card_s, now) if show else (0.0, 0.0)
+        self.overlay.refresh()
+
+    def _card_tick(self, now: float) -> None:
+        c = self.card_state
+        if c and c["until"] and now >= c["until"]:
+            c["until"] = 0.0
+            self.overlay.refresh()
+        elif c and c["until"] and self.ride.pedaling and now - c["shown"] >= CARD_PEDAL_HIDE_S:
+            c["until"] = 0.0  # back on the bike
+            self.overlay.refresh()
+
+    # ---- FTP ramp test -----------------------------------------------------------------
+    def start_ramp_test(self):
+        wo = ramp_workout(self.settings.ftp)
+        self.use_workout(wo)
+        self.flash("Ramp test loaded: it starts when you pedal")
+
+    def _ramp_tick(self) -> None:
+        p = self.ride.player
+        if self.ramp is None or p is None or p.workout is not self.ramp.workout:
+            return
+        t = self.ride.telemetry
+        if self.ramp.update(time.monotonic(), p.elapsed, t.cadence, self.ride.target_watts()):
+            self._ramp_over()
+
+    def end_ramp_test(self):
+        p = self.ride.player
+        if self.ramp is None or p is None or p.workout is not self.ramp.workout or not self.ramp.in_ramp(p.elapsed):
+            self.flash("No ramp in progress")
+            return
+        self.ramp.end()
+        self._ramp_over()
+
+    def _ramp_over(self) -> None:
+        p = self.ride.player
+        p.elapsed = self.ramp.cooldown_start
+        if self.settings.beeps:
+            self.beeper.play("finish")
+        top = self.ramp.peak_step_w
+        self.flash(f"Ramp over{f' at {top} W' if top else ''}: cool down")
+
+    def _fetch_eftp(self, activity_id: str) -> None:
+        """Wait for intervals.icu to analyse the ramp test, then re-read the FTP: intervals.icu raises
+        it by itself when a ride's eFTP beats it (Sporterlay never writes it)."""
+        key, athlete_id, sync = self.settings.icu_api_key, self.settings.icu_athlete_id, self.settings.icu_sync_ftp
+        old_ftp = self.settings.ftp
+
+        def work():
+            client = IntervalsClient(key, athlete_id)
+            deadline, error, eftp = time.monotonic() + EFTP_WAIT_S, None, None
+            while time.monotonic() < deadline and eftp is None:
+                try:
+                    eftp = client.activity_eftp(activity_id)
+                    error = None
+                except Exception as e:
+                    error = str(e)
+                if eftp is None:
+                    time.sleep(EFTP_POLL_S)
+            if eftp is None:
+                self.signals.eftp_done.emit(None, None, error or "intervals.icu has no eFTP for this ride")
+                return
+            athlete = None
+            if sync:  # give intervals.icu's own FTP update a moment when it should happen
+                for _ in range(EFTP_FTP_TRIES):
+                    try:
+                        athlete = client.athlete()
+                    except Exception as e:
+                        log.warning("Re-reading FTP after the ramp test: %s", e)
+                    if athlete is None or not athlete.ftp or eftp <= old_ftp or athlete.ftp != old_ftp:
+                        break
+                    time.sleep(EFTP_POLL_S)
+            self.signals.eftp_done.emit(eftp, athlete, None)
+
+        threading.Thread(target=work, name="eftp", daemon=True).start()
+
+    def _eftp_done(self, eftp, athlete, error):
+        fit = self._ramp_fit
+        if not eftp:
+            log.warning("Ramp test eFTP: %s", error)
+            self._card_status(fit, note="Ramp test: no eFTP from intervals.icu")
+            self.flash("No eFTP from intervals.icu for the ramp test")
+            return
+        s, old = self.settings, self.settings.ftp
+        log.info("Ramp test eFTP from intervals.icu: %d W (FTP was %d W)", eftp, old)
+        if athlete and athlete.ftp:
+            s.ftp = athlete.ftp
+            if athlete.w_prime:
+                s.w_prime_j = athlete.w_prime
+            s.save()
+        if s.ftp != old:
+            msg = f"Ramp test: eFTP {eftp} W · FTP {old} → {s.ftp} W"
+        elif athlete:
+            msg = f"Ramp test: eFTP {eftp} W · FTP stays {s.ftp} W"
+        else:
+            msg = f"Ramp test: eFTP {eftp} W"
+        self._card_status(fit, note=msg)
+        self.tray.showMessage("Sporterlay", msg.replace("Ramp test: ", "Ramp test: intervals.icu "), self.icon, 8000)
 
     def _recover_rides(self) -> None:
         for fit, meta in recorder.recover(activities_dir()):
@@ -373,13 +548,13 @@ class App:
 
         def work():
             client = IntervalsClient(key, athlete, timeout=60)
-            done, error = 0, None
+            done, error = [], None
             for fit, meta in todo:
                 try:
                     aid = client.upload_activity(fit, meta.get("name") or "", meta.get("event_id"),
                                                  meta.get("external_id") or "")
                     recorder.mark_uploaded(fit)
-                    done += 1
+                    done.append((fit.name, aid, meta))
                     log.info("Uploaded %s to intervals.icu (activity %s)", fit.name, aid)
                 except Exception as e:
                     error = str(e)
@@ -390,14 +565,23 @@ class App:
         # when quitting, a non-daemon thread lets the upload finish after the window is gone
         threading.Thread(target=work, name="upload", daemon=not quitting).start()
 
-    def _upload_done(self, done: int, error):
+    def _upload_done(self, done: list, error):
         self._uploading = False
+        for fit_name, aid, meta in done:
+            self._card_status(fit_name, "Uploaded to intervals.icu ✓")
+            if meta.get("ramp") and aid:
+                self._ramp_fit = fit_name
+                self._card_status(fit_name, note="Ramp test: waiting for intervals.icu eFTP…")
+                self._fetch_eftp(aid)
         if error:
             self.flash("Upload to intervals.icu failed, will retry")
             self.icu_status = "upload failed, will retry"
+            if self.card_state and self.card_state["status"].startswith("Uploading"):
+                self._card_status(self.card_state["fit"], "Upload failed, will retry")
             QTimer.singleShot(15000, lambda: setattr(self, "icu_status", ""))
         elif done:
-            self.flash("Ride uploaded to intervals.icu" if done == 1 else f"{done} rides uploaded to intervals.icu")
+            n = len(done)
+            self.flash("Ride uploaded to intervals.icu" if n == 1 else f"{n} rides uploaded to intervals.icu")
 
     def save_ride_now(self):
         if not self.recorder.active:
@@ -488,6 +672,9 @@ class App:
             bits.append(self.zwift.status)
         if self.fan and not self.fan.connected:
             bits.append(self.fan.status)
+        p = self.ride.player
+        if self.ramp and p and p.workout is self.ramp.workout and self.ramp.in_ramp(p.elapsed) and not self.ramp.ended:
+            bits.append("Ramp test: keep going, under 60 rpm ends it")
         if self.icu_status:
             bits.append(self.icu_status)
         return " · ".join(bits) if bits else None
@@ -552,8 +739,10 @@ class App:
         if p is not None and p.finished and self.recorder.active:
             self.finish_ride()  # the previous workout is done: the next one is a new ride
         self.ride.load_workout(workout)
+        self.ramp = RampTest(workout) if is_ramp_test(workout) else None
         event = int(key[4:]) if key and key.startswith("icu:") else None
-        self.recorder.set_meta(("DEMO " if self.demo else "") + workout.name, event)
+        extra = {"ramp": True} if self.ramp else {}
+        self.recorder.set_meta(("DEMO " if self.demo else "") + workout.name, event, **extra)
         if key is not None:
             self.settings.last_workout = key
             self.settings.save()
@@ -805,6 +994,7 @@ class App:
         act("Choose workout library file…", self.choose_library, menu=wm)
         has = self.ride.player is not None
         act("Unload workout", self.unload_workout, enabled=has)
+        act("FTP ramp test (+20 W/min until you can't)", self.start_ramp_test)
         m.addSeparator()
         act("Pause workout\tCtrl+Alt+P", self.toggle_pause,
             checked=bool(has and self.ride.player.paused), enabled=has)
@@ -873,6 +1063,8 @@ class App:
         act(f"Save ride now  ({fmt_time(rec.samples)} recorded)" if rec.active else "Save ride now",
             self.save_ride_now, enabled=rec.active, menu=rm)
         act("Open rides folder", lambda: self._open_folder(activities_dir()), menu=rm)
+        act("Show last ride summary", self.toggle_card, enabled=self.card_state is not None, menu=rm)
+        act("Ride summary when a ride ends", lambda: self._toggle("ride_card"), checked=s.ride_card, menu=rm)
         pm = m.addMenu("Power smoothing")
         grp = QActionGroup(pm)
         for v in (1, 3, 5, 10):

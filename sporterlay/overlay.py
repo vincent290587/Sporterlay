@@ -11,6 +11,7 @@ from PyQt6.QtGui import QColor, QFont, QFontDatabase, QPainter, QPainterPath, QP
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from .ride import Ride
+from .summary import RideSummary
 from .workout import Segment
 
 # Training-zone colours (fraction of FTP upper bounds)
@@ -76,12 +77,13 @@ def _family() -> str:
 
 
 class Overlay(QWidget):
-    def __init__(self, ride: Ride, status_text, now_playing=lambda: None):
+    def __init__(self, ride: Ride, status_text, now_playing=lambda: None, card=lambda: None):
         super().__init__()
         self.ride = ride
         self.settings = ride.settings
         self.status_text = status_text  # callable -> str | None
         self.now_playing = now_playing  # callable -> str | None (Spotify track)
+        self.card = card  # callable -> (RideSummary, upload status) | None: end-of-ride card
         self._drag: Optional[QPoint] = None
         self._family = _family()
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -121,7 +123,7 @@ class Overlay(QWidget):
 
     def _base_height(self) -> int:
         h = BAR_H
-        if self.ride.player:
+        if self.ride.player or self.card():  # the card takes the workout panel's place
             h += GAP + WORKOUT_H
         h += GAP + STATUS_H  # always reserve, keeps the window from jumping around
         return h
@@ -223,7 +225,11 @@ class Overlay(QWidget):
         if self.settings.show_wbal:
             self.paint_wbal(p, QRectF(BASE_W + GAP, y, WBAL_W, BAR_H))
         y += BAR_H + GAP
-        if self.ride.player:
+        card = self.card()
+        if card:
+            self.paint_card(p, QRectF(0, y, BASE_W, WORKOUT_H), *card)
+            y += WORKOUT_H + GAP
+        elif self.ride.player:
             self.paint_workout(p, QRectF(0, y, BASE_W, WORKOUT_H))
             y += WORKOUT_H + GAP
 
@@ -434,6 +440,97 @@ class Overlay(QWidget):
         self.text(p, QRectF(x0 + (x1 - x0) * 0.4, fy, (x1 - x0) * 0.6, 20), right, 13,
                   QColor(255, 205, 60) if state else LABEL, True,
                   Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+    def paint_card(self, p: QPainter, r: QRectF, sm: RideSummary, status: str) -> None:
+        """End-of-ride summary, in the workout panel's place."""
+        import datetime as dt
+
+        self.panel(p, r)
+        pad = 14
+        x0, x1 = r.x() + pad, r.right() - pad
+        left, right = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, \
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        y = r.y() + 8
+        title = f"Ride done  ·  {sm.name}" if sm.name else "Ride done"
+        when = dt.datetime.fromtimestamp(sm.start).strftime("%a %d %b %H:%M") if sm.start else ""
+        sub = f"{when}   {fmt_time(sm.moving_s)}   {sm.distance_km:.1f} km"
+        p.setFont(self._font(13, True))
+        sw = p.fontMetrics().horizontalAdvance(sub) + 12
+        p.setFont(self._font(18, True))
+        title = p.fontMetrics().elidedText(title, Qt.TextElideMode.ElideRight, int(x1 - x0 - sw))
+        self.text(p, QRectF(x0, y, x1 - x0 - sw, 24), title, 18, WHITE, True, left)
+        self.text(p, QRectF(x1 - sw, y, sw, 24), sub, 13, LABEL, True, right)
+
+        # big numbers
+        dash = "--"
+        wcol = self.wbal_color(sm.wbal_min) if sm.wbal_min is not None else WHITE
+        cells = [
+            ("NORM. POWER", str(sm.np), "W", WHITE),
+            ("AVG POWER", str(sm.avg_power), "W", WHITE),
+            ("INTENSITY", f"{sm.intensity:.2f}", "", WHITE),
+            ("LOAD (TSS)", str(sm.tss), "", WHITE),
+            ("ENERGY", str(sm.kj), "kJ", WHITE),
+            ("HR AVG / MAX", f"{sm.avg_hr}/{sm.max_hr}" if sm.avg_hr else dash, "", QColor(255, 95, 95)),
+            ("CADENCE", str(sm.avg_cadence) if sm.avg_cadence else dash, "rpm", WHITE),
+            ("LOWEST W′", dash if sm.wbal_min is None else f"{max(0, round(sm.wbal_min * 100))}", "%", wcol),
+        ]
+        cy, cw = y + 30, (x1 - x0) / len(cells)
+        for i, (label, val, unit, col) in enumerate(cells):
+            cell = QRectF(x0 + i * cw, cy, cw, 36)
+            self.value_unit(p, cell, val, unit, 25 if len(val) <= 4 else 20, col)
+            self.text(p, QRectF(cell.x(), cy + 36, cw, 14), label, 10, LABEL, True)
+
+        # time in zones: stacked bar and legend
+        zy = cy + 60
+        total = sum(sm.zones) or 1
+        bar = QRectF(x0, zy, x1 - x0, 12)
+        path = QPainterPath()
+        path.addRoundedRect(bar, 6, 6)
+        p.save()
+        p.setClipPath(path)
+        p.fillRect(bar, QColor(255, 255, 255, 30))
+        x = bar.x()
+        for (lim, col), secs in zip(ZONES, sm.zones):
+            w = bar.width() * secs / total
+            p.fillRect(QRectF(x, bar.y(), w + 0.5, bar.height()), col)
+            x += w
+        p.restore()
+        lw = (x1 - x0) / len(ZONES)
+        for i, ((lim, col), secs) in enumerate(zip(ZONES, sm.zones)):
+            cell = QRectF(x0 + i * lw, zy + 15, lw, 16)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(col)
+            p.drawEllipse(QRectF(cell.x() + 4, cell.center().y() - 4, 8, 8))
+            self.text(p, cell.adjusted(16, 0, 0, 0), f"Z{i + 1}  {fmt_time(secs)}", 11,
+                      WHITE if secs else LABEL, True, left)
+
+        # footer: on target / note on the left, upload status on the right
+        fy = r.bottom() - 26
+        x = x0
+        for txt, col in ((f"On target {round(sm.on_target * 100)} %" if sm.on_target is not None else "", WHITE),
+                         (sm.note, QColor(255, 205, 60))):
+            if txt:
+                p.setFont(self._font(13, True))
+                w = p.fontMetrics().horizontalAdvance(txt) + 24
+                self.text(p, QRectF(x, fy, w, 18), txt, 13, col, True, left)
+                x += w
+        ok = status.startswith("Uploaded")
+        self.text(p, QRectF(x0 + (x1 - x0) * 0.45, fy, (x1 - x0) * 0.55, 18), status, 13,
+                  QColor(80, 195, 90) if ok else LABEL, True, right)
+
+    def render_card_png(self, sm: RideSummary, status: str, path, scale: float = 2.0) -> bool:
+        """The card on a dark background, for sharing."""
+        from PyQt6.QtGui import QImage
+
+        img = QImage(int(BASE_W * scale), int(WORKOUT_H * scale), QImage.Format.Format_ARGB32)
+        img.fill(QColor(18, 20, 27))
+        p = QPainter(img)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        p.scale(scale, scale)
+        self.paint_card(p, QRectF(0, 0, BASE_W, WORKOUT_H), sm, status)
+        p.end()
+        return img.save(str(path))
 
     def paint_profile(self, p: QPainter, g: QRectF) -> None:
         player = self.ride.player

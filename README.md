@@ -135,6 +135,21 @@ With an intervals.icu API key, each ride is uploaded right away (laps = workout 
 workout when it came from intervals.icu). If you're offline, it's kept in `activities\pending` and retried at the
 next start. Toggle with *intervals.icu → Upload rides to intervals.icu*. Demo-mode rides are never uploaded.
 
+When a ride ends, a **summary card** replaces the workout panel for 30 s (or until you pedal again):
+normalized and average power, intensity, training load (TSS), kJ, heart rate, cadence, lowest W′ balance,
+time in each zone, how much of the workout you rode within ±5 % of the target, and whether the upload worked.
+It's also saved as a `.png` next to the `.fit`. *Rides → Show last ride summary* (or a Click button bound to
+*Show / hide ride summary*) brings it back; *Rides → Ride summary when a ride ends* turns it off.
+
+## FTP ramp test
+Tray → *FTP ramp test*: 5 min warm-up, then ERG goes up 20 W every minute from about half your FTP. Ride until
+you can't: when your cadence stays under 60 rpm for 5 s (or you press a Click button bound to *End ramp test*),
+the ramp stops and a 5 min cool-down follows. Sporterlay doesn't compute the FTP itself: the ride is uploaded
+intervals.icu estimates an **eFTP** for it. intervals.icu raises your FTP by itself when that eFTP beats it;
+Sporterlay then re-reads the FTP (with *Use FTP, weight and W′ from intervals.icu* on) and the summary card shows
+the result, e.g. "eFTP 287 W · FTP 270 → 287 W". Sporterlay never changes your FTP on intervals.icu. Needs an
+intervals.icu API key and upload turned on; ramp tests in demo mode give no result.
+
 ## Extras
 - **Beeps**: tray → *Extras → Beeps before interval changes*.
 - **W′ balance**: tray → *Extras → W′ balance gauge*. CP is your FTP; W′ (default 20 kJ) comes from intervals.icu

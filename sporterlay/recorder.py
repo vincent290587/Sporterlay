@@ -38,6 +38,7 @@ class RideRecorder:
         self._d0 = 0.0
         self._unflushed = 0
         self.samples = 0  # moving seconds recorded in the current ride
+        self.last_rows: list[tuple] = []  # samples of the ride that finish() just saved (for the summary)
 
     @property
     def active(self) -> bool:
@@ -46,14 +47,16 @@ class RideRecorder:
     def idle_s(self, now: float) -> float:
         return now - self._last_t if self._last_t is not None else 0.0
 
-    def set_meta(self, name: str = "", event_id: Optional[int] = None) -> None:
-        """Workout name and intervals.icu event (for pairing). The last one set wins."""
-        self._meta = {"name": name, "event_id": event_id, "demo": self.demo}
+    def set_meta(self, name: str = "", event_id: Optional[int] = None, **extra) -> None:
+        """Workout name and intervals.icu event (for pairing), plus extras (e.g. ramp=True).
+        The last one set wins."""
+        self._meta = {"name": name, "event_id": event_id, "demo": self.demo, **extra}
         if self.active:
             self._write({"meta": self._meta})
 
-    def sample(self, now: float, moving: bool, power, hr, cadence, speed_ms, distance_m: float, lap_key) -> None:
-        """Called every tick; keeps one sample per second while moving."""
+    def sample(self, now: float, moving: bool, power, hr, cadence, speed_ms, distance_m: float, lap_key,
+               target=None) -> None:
+        """Called every tick; keeps one sample per second while moving. target = workout target (W)."""
         if not moving or (self._last_t is not None and int(now) == int(self._last_t)):
             return
         now = float(int(now))
@@ -67,7 +70,7 @@ class RideRecorder:
         self._last_t = now
         self.samples += 1
         self._write([now, power, hr, cadence, None if speed_ms is None else round(speed_ms, 3),
-                     round(max(0.0, distance_m - self._d0), 1)])
+                     round(max(0.0, distance_m - self._d0), 1), target])
 
     def _start(self, now: float, distance_m: float) -> None:
         try:
@@ -104,13 +107,25 @@ class RideRecorder:
         self._f = None
         self._last_t = None
         path, self.samples = self._path, 0
-        return convert(path)
+        result = _convert(path)
+        if result is None:
+            self.last_rows = []
+            return None
+        fit, meta, self.last_rows = result
+        return fit, meta
 
 
 def convert(journal: Path) -> Optional[tuple[Path, dict]]:
     """Turn a ride journal into a .fit file next to it and delete the journal.
     Returns (fit path, meta), or None if the ride was too short (or unreadable)."""
+    result = _convert(journal)
+    return None if result is None else result[:2]
+
+
+def _convert(journal: Path) -> Optional[tuple[Path, dict, list[tuple]]]:
+    """convert(), plus the samples as (t, power, hr, cadence, speed m/s, distance m, target W) rows."""
     meta: dict = {}
+    rows: list[tuple] = []
     start = None
     laps: list[Lap] = []
     stops: list[tuple[float, float]] = []
@@ -125,7 +140,8 @@ def convert(journal: Path) -> Optional[tuple[Path, dict]]:
         except ValueError:
             continue  # the last line can be cut off by a crash
         if isinstance(obj, list):
-            t, p, hr, cad, spd, dist = obj
+            t, p, hr, cad, spd, dist = obj[:6]
+            rows.append((t, p, hr, cad, spd, dist, obj[6] if len(obj) > 6 else None))  # older journals: no target
             if not laps:
                 laps.append(Lap(t))
             laps[-1].samples.append(Sample(t, p, hr, cad, spd, dist))
@@ -159,7 +175,7 @@ def convert(journal: Path) -> Optional[tuple[Path, dict]]:
         return None
     journal.unlink(missing_ok=True)
     log.info("Saved ride %s (%d s moving)", fit, n)
-    return fit, meta
+    return fit, meta, rows
 
 
 def fit_name(start: float, name: str) -> str:

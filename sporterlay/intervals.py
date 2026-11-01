@@ -69,15 +69,16 @@ class IntervalsClient:
     def _get(self, path: str, **params) -> object:
         return self._request(path, params)
 
-    def _request(self, path: str, params: dict, data: Optional[bytes] = None, content_type: str = "") -> object:
-        url = f"{BASE}/athlete/{urllib.parse.quote(self.athlete_id)}{path}"
+    def _request(self, path: str, params: dict, data: Optional[bytes] = None, content_type: str = "",
+                 method: str = "", athlete: bool = True) -> object:
+        url = f"{BASE}/athlete/{urllib.parse.quote(self.athlete_id)}{path}" if athlete else f"{BASE}{path}"
         params = {k: v for k, v in params.items() if v is not None}
         if params:
             url += "?" + urllib.parse.urlencode(params)
         headers = {"Authorization": self._auth, "Accept": "application/json", "User-Agent": "Sporterlay"}
         if content_type:
             headers["Content-Type"] = content_type
-        req = urllib.request.Request(url, data=data, headers=headers, method="POST" if data is not None else "GET")
+        req = urllib.request.Request(url, data=data, headers=headers, method=method or ("POST" if data is not None else "GET"))
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
                 return json.loads(r.read().decode("utf-8"))
@@ -139,3 +140,9 @@ class IntervalsClient:
                             data=body, content_type=f"multipart/form-data; boundary={boundary}")
         acts = (res or {}).get("activities") or []
         return str((acts[0] or {}).get("id") if acts else (res or {}).get("id") or "")
+
+    def activity_eftp(self, activity_id: str) -> Optional[int]:
+        """intervals.icu's eFTP for one activity (its power-curve model), None until it's analysed."""
+        a = self._request(f"/activity/{urllib.parse.quote(str(activity_id))}", {}, athlete=False)
+        v = (a or {}).get("icu_pm_ftp")
+        return int(round(v)) if v else None
