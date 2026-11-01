@@ -93,7 +93,14 @@ def _patch_usb_find() -> None:
                 dev._ctx.managed_open()
             except usb.core.USBError as e:
                 log.debug("USB %s can't open device via %s: %s", dev, type(be).__module__, e)
+                usb.util.dispose_resources(dev)
                 continue
+            try:
+                # libusb0 lets a second process open a stick that another app is using; only the
+                # claim fails, and openant's read loop then spins on that error. Fail here instead.
+                usb.util.claim_interface(dev, 0)
+            except usb.core.USBError as e:
+                raise usb.core.USBError(f"ANT+ dongle busy: {e}", errno=16) from e
             finally:
                 usb.util.dispose_resources(dev)  # openant reopens it; don't hold a second handle
             log.debug("USB device opens via %s", type(be).__module__)

@@ -10,7 +10,7 @@ import threading
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import QAbstractNativeEventFilter, QObject, QRectF, QTimer, pyqtSignal
+from PyQt6.QtCore import QAbstractNativeEventFilter, QLockFile, QObject, QRectF, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QActionGroup, QColor, QIcon, QPainter, QPixmap, QFont
 from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLineEdit, QMenu, QMessageBox,
                              QSystemTrayIcon)
@@ -673,6 +673,17 @@ def main(argv=None) -> int:
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
 
+    # One instance only: a second one would fight over the ANT+ stick, the Click and the hotkeys,
+    # and truncate the running one's log. Check before any of that is touched.
+    config_dir().mkdir(parents=True, exist_ok=True)
+    lock = QLockFile(str(config_dir() / "sporterlay.lock"))
+    if not lock.tryLock(0):
+        _app = QApplication(sys.argv)
+        QMessageBox.information(None, "Sporterlay",
+                                "Sporterlay is already running.\n\n"
+                                "Look for the orange S icon in the system tray (next to the clock).")
+        return 1
+
     # pythonw / windowed .exe have no console: sys.stderr is None there
     handlers = [logging.StreamHandler()] if sys.stderr is not None else []
     try:
@@ -682,4 +693,7 @@ def main(argv=None) -> int:
         pass
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(name)s %(levelname)s %(message)s", handlers=handlers)
-    return App(args).run()
+    try:
+        return App(args).run()
+    finally:
+        lock.unlock()

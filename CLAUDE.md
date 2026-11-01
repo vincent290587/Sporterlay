@@ -53,6 +53,7 @@ The data flow is a single 4 Hz poll loop on the Qt thread (`App.tick` in `app.py
 
 ## Gotchas
 
+- Only one instance runs at a time: `main()` takes a `QLockFile` (`sporterlay.lock` in the config dir) before logging starts, and a second launch shows "already running" and exits. A stale lock from a crashed instance is taken over automatically. libusb0 lets a second process open the ANT stick, and then only the interface claim fails, which made openant's read loop spin. `_patch_usb_find()` probes the claim and raises a "busy" `USBError` (errno 16) instead.
 - Windowed exe and `pythonw` have `sys.stderr is None`, so don't log to or print to stderr unconditionally.
 - On Windows the ANT stick can use WinUSB or libusb-win32. The Windows ride PC's stick is on libusb-win32 and must stay there, because other apps need it. Only one app can hold the stick at a time (Zwift, Garmin Express). On Linux it needs a udev rule (see README). The dev machine's stick is an ANTUSB-m (`0fcf:1009`).
 - `DemoSource` simulates sim-mode physics (speed from cadence, power from grade), so shifting can be tested with `--demo`. Don't derive demo speed from power, because that creates a feedback loop with the gear grade.
