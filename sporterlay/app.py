@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import logging
+import os
 import sys
 import threading
 import time
@@ -1278,7 +1279,21 @@ class App:
         return self.qapp.exec()
 
 
+def prefer_xwayland(env=os.environ) -> bool:
+    """Linux Wayland session: run through XWayland unless the platform was chosen explicitly.
+    Native Wayland ignores window placement, always-on-top and click-through, so the HUD would
+    open as a normal window in the middle of the screen. Returns True if it switched."""
+    if not sys.platform.startswith("linux") or env.get("QT_QPA_PLATFORM"):
+        return False
+    wayland = env.get("WAYLAND_DISPLAY") or env.get("XDG_SESSION_TYPE") == "wayland"
+    if not wayland or not env.get("DISPLAY"):  # no XWayland to fall back on
+        return False
+    env["QT_QPA_PLATFORM"] = "xcb"
+    return True
+
+
 def main(argv=None) -> int:
+    xwayland = prefer_xwayland()  # before any QApplication exists
     ap = argparse.ArgumentParser(prog="sporterlay", description="Smart trainer HUD overlay")
     ap.add_argument("--demo", action="store_true", help="simulate a trainer and HR strap (no ANT+ needed)")
     ap.add_argument("--workout", help="path to a .zwo workout to load")
@@ -1307,6 +1322,8 @@ def main(argv=None) -> int:
         pass
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(name)s %(levelname)s %(message)s", handlers=handlers)
+    if xwayland:
+        log.info("Wayland session: using XWayland (QT_QPA_PLATFORM=xcb) so the HUD can stay on top")
     try:
         return App(args).run()
     finally:

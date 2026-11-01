@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Sporterlay is a PyQt6 transparent, always-on-top, click-through HUD that reads an ANT+ smart trainer (FE-C) and HR strap via `openant`, shows Zwift-style ride data, runs intervals.icu planned workouts (fetched as `.zwo`) with ERG control, and uses a Zwift Click v2 (BLE via `bleak`) for virtual shifting outside ERG. **The target platform is Windows** (a separate PC). Development happens on Linux (GNOME Wayland), where always-on-top over fullscreen windows can't work, so verify UI changes with demo mode and offscreen renders rather than by watching the live window.
+Sporterlay is a PyQt6 transparent, always-on-top, click-through HUD that reads an ANT+ smart trainer (FE-C) and HR strap via `openant`, shows Zwift-style ride data, runs intervals.icu planned workouts (fetched as `.zwo`) with ERG control, and uses a Zwift Click v2 (BLE via `bleak`) for virtual shifting outside ERG. **The target platform is Windows** (a separate PC). Development happens on Linux (GNOME Wayland), where always-on-top over fullscreen windows can't work, so verify UI changes with demo mode and offscreen renders rather than by watching the live window. On a Wayland session `main()` switches to XWayland by itself (`prefer_xwayland()`: sets `QT_QPA_PLATFORM=xcb` unless it's already set), because native Wayland ignores placement, always-on-top and click-through and the HUD would open mid-screen. An explicit `QT_QPA_PLATFORM` (e.g. `offscreen`) always wins.
 
 ## Commands
 
@@ -12,7 +12,7 @@ Sporterlay is a PyQt6 transparent, always-on-top, click-through HUD that reads a
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m sporterlay --demo --workout workouts/VO2max_5x3.zwo   # simulated trainer
 .venv/bin/python -m sporterlay -v                                          # real ANT+ dongle, debug logging
-QT_QPA_PLATFORM=xcb .venv/bin/python -m sporterlay --demo                  # on Wayland: makes on-top/click-through work
+QT_QPA_PLATFORM=offscreen .venv/bin/python …                                # headless renders / scripted checks
 ```
 
 There is no test suite or linter configured. Checks that have been used:

@@ -227,4 +227,5 @@ For a real dongle, allow access to the stick:
 echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="0fcf", MODE="0666"' | sudo tee /etc/udev/rules.d/99-ant-usb.rules
 sudo udevadm control --reload && sudo udevadm trigger
 ```
-On GNOME Wayland run with `QT_QPA_PLATFORM=xcb` so always-on-top/click-through work (fullscreen video will still cover it).
+On a Wayland desktop (e.g. GNOME) Sporterlay runs through XWayland by itself, so it can sit at the top and stay
+on top and click-through (fullscreen video will still cover it). Set `QT_QPA_PLATFORM` yourself to override.
