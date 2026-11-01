@@ -48,6 +48,65 @@ def _prepare_libusb() -> None:
                 os.add_dll_directory(d)
     except Exception as e:  # pragma: no cover - best effort
         log.warning("Could not locate bundled libusb: %s", e)
+    _patch_usb_find()
+
+
+def _patch_usb_find() -> None:
+    """Let openant open sticks bound to libusb-win32 (libusb0.sys), not just WinUSB.
+
+    libusb-1.0 lists a libusb0.sys device but can't open it (access denied), and the
+    driver can't be swapped because other apps on the PC rely on it. openant calls
+    usb.core.find() without a backend, so try each backend and return the first
+    device that actually opens; libusb0.dll is installed with the libusb-win32 driver.
+    """
+    import usb.core
+    import usb.util
+
+    if getattr(usb.core.find, "_sporterlay", False):
+        return
+    orig_find = usb.core.find
+
+    def backends():
+        try:
+            import libusb_package
+
+            yield libusb_package.get_libusb1_backend()
+        except Exception:
+            pass
+        try:
+            import usb.backend.libusb0
+
+            yield usb.backend.libusb0.get_backend()
+        except Exception:
+            pass
+
+    def find(*args, **kwargs):
+        if kwargs.get("backend") is not None or kwargs.get("find_all"):
+            return orig_find(*args, **kwargs)
+        for be in backends():
+            if be is None:
+                continue
+            dev = orig_find(*args, backend=be, **kwargs)
+            if dev is None:
+                continue
+            try:
+                dev._ctx.managed_open()
+            except usb.core.USBError as e:
+                log.debug("USB %s can't open device via %s: %s", dev, type(be).__module__, e)
+                continue
+            finally:
+                usb.util.dispose_resources(dev)  # openant reopens it; don't hold a second handle
+            log.debug("USB device opens via %s", type(be).__module__)
+            return dev
+        return orig_find(*args, **kwargs)
+
+    find._sporterlay = True
+    usb.core.find = find
+    # libusb0 read timeouts arrive as a plain USBError (pyusb compares against Windows'
+    # errno.ETIMEDOUT, not libusb-win32's 116), so openant warns about each idle second.
+    logging.getLogger("openant.base.ant").addFilter(
+        lambda r: "timeout error" not in r.getMessage()
+    )
 
 
 class AntSource:
@@ -86,12 +145,12 @@ class AntSource:
                 if "DriverNotFound" in e.__class__.__name__ or "not found" in msg.lower():
                     self.status = "No ANT+ dongle found"
                 elif getattr(e, "errno", None) in (13, 16) or "access denied" in msg.lower() or "busy" in msg.lower():
-                    # Windows: another app (Zwift, Garmin Express…) holds the stick, or it lacks the WinUSB driver.
+                    # Windows: another app (Zwift, Garmin Express…) holds the stick.
                     # Linux: missing udev rule.
                     self.status = "ANT+ dongle busy / no access (close Zwift etc., see README)"
                 elif "not supported" in msg.lower() or "unimplemented" in msg.lower():
-                    # Windows libusb can't open a device that isn't bound to WinUSB.
-                    self.status = "ANT+ dongle needs the WinUSB driver (Zadig, see README)"
+                    # Windows: the stick has no usable driver (neither WinUSB nor libusb-win32).
+                    self.status = "ANT+ dongle needs a USB driver (Zadig, see README)"
                 elif "NoBackend" in e.__class__.__name__:
                     self.status = "libusb missing (see README)"
                 else:

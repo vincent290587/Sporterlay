@@ -30,8 +30,9 @@ If the project is on GitHub, the *Build Windows exe* action builds it on every p
 (download it from the run's *Artifacts*).
 
 ### 2. Dongle driver (once)
-Sporterlay talks to the ANT+ stick through libusb, which needs the stick bound to **WinUSB**.
-If the status line says *"needs the WinUSB driver"* or *"No ANT+ dongle found"* while it is plugged in:
+Sporterlay talks to the ANT+ stick through libusb. It works with the stick bound to **WinUSB** or to
+**libusb-win32** (which other ANT+ software often installs, so leave it if it's already there).
+If the status line says *"needs a USB driver"* or *"No ANT+ dongle found"* while it is plugged in:
 
 1. Download [Zadig](https://zadig.akeo.ie/) and run it.
 2. *Options → List All Devices*, pick **ANT USB-m Stick** (or ANTUSB2).
