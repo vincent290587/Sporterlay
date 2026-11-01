@@ -6,9 +6,16 @@ HR strap, never a controllable trainer, so ERG, gears and isokinetic mode stay i
 Verified with Zwift on the same Windows PC (issue #6).
 
 Discovery is mDNS `_wahoo-fitness-tnp._tcp` with TXT `ble-service-uuids` (full 128-bit UUIDs,
-comma-separated), `mac-address` and `serial-number`. Zwift takes the service list from that TXT
-and never sends "discover services"; it discovers the characteristics, enables notifications on
-0x2A63 and 0x2A37, then only listens.
+comma-separated), `mac-address` and `serial-number`. The serial must be decimal digits: MyWhoosh
+(WindowsConnectivity.dll, WahooProgram.PairDevice) runs UInt64.Parse on it and crashes on a
+FormatException otherwise. MyWhoosh also connects by resolving the SRV host name with
+Dns.GetHostAddressesAsync("<host>.local."), which Windows only resolves reliably for the PC's own
+name, so that's the name announced.
+
+Zwift and MyWhoosh (sometimes) discover services, discover the characteristics, enable
+notifications on 0x2A63 and 0x2A37, then only listen. MyWhoosh also reads 0x2A65. MyWhoosh never
+offers a Direct Connect device as a heart-rate source (only its Bluetooth path sets the HR flag),
+so there it's power and cadence only.
 
 Wire format (from qdomyos-zwift src/devices/dircon): 6-byte header [version 1, message id,
 sequence, response code, length (big-endian u16)], payload with each UUID as 16 bytes. Responses
@@ -200,7 +207,8 @@ class ZwiftShare:
             log.warning("Zwift sharing: no free port")
             return
         ips = lan_addresses()
-        mac = ":".join(f"{(uuidlib.getnode() >> s) & 0xFF:02X}" for s in range(40, -1, -8))
+        node = uuidlib.getnode()
+        mac = ":".join(f"{(node >> s) & 0xFF:02X}" for s in range(40, -1, -8))
         host = socket.gethostname().replace(" ", "-")
         info = ServiceInfo(
             SERVICE_TYPE, f"{NAME}.{SERVICE_TYPE}",
@@ -208,9 +216,12 @@ class ZwiftShare:
             properties={
                 "ble-service-uuids": ",".join(str(uuidlib.UUID(bytes=uuid128(s))) for s in SERVICES),
                 "mac-address": mac,
-                "serial-number": "SPORTERLAY0001",
+                # digits only: MyWhoosh parses it with UInt64.Parse and crashes on anything else
+                "serial-number": str(node),
             },
-            server=f"{host}-sporterlay.local.",
+            # the PC's own name: MyWhoosh connects via Dns.GetHostAddressesAsync("<host>.local."), and
+            # Windows resolves that reliably only for its own name (a made-up one fails with the dot)
+            server=f"{host}.local.",
         )
         zc = AsyncZeroconf(ip_version=IPVersion.V4Only)
         try:

@@ -24,7 +24,8 @@ virtual gears when you're not following a workout.
 - Every ride is saved as a `.fit` file and uploaded to intervals.icu, paired with the planned workout
 - Windows: the browser video pauses when you stop pedaling and resumes when you start again (Spotify is left
   alone), and Spotify's current track shows in the overlay when it changes
-- Zwift on the same PC can use Sporterlay as its power meter, cadence sensor and heart-rate monitor (Direct Connect)
+- Zwift on the same PC can use Sporterlay as its power meter, cadence sensor and heart-rate monitor (Direct Connect);
+  MyWhoosh can use it for power and cadence
 
 ## Windows setup
 
@@ -147,6 +148,9 @@ next start. Toggle with *intervals.icu → Upload rides to intervals.icu*. Demo-
   climbs don't change the resistance. The status line says "waiting for Zwift" until Zwift connects. If Windows
   asks whether to allow network access the first time, allow it on private networks (Zwift on the same PC works
   either way; Zwift on another device needs it).
+  **MyWhoosh** works the same way for power and cadence. It doesn't accept heart rate from a network device, so
+  pair your strap with MyWhoosh over Bluetooth if it supports it. If MyWhoosh hangs at "pairing in progress",
+  restart MyWhoosh, remove Sporterlay from its devices and pair again.
 
 ## Workout library (ai_advise database)
 Tray → **Workout library…** opens a browser for your ai_advise workout database: search by name, filter by
