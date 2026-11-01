@@ -8,9 +8,11 @@ from __future__ import annotations
 from collections import deque
 from typing import Optional
 
+from .cues import cues_between
 from .settings import Settings
 from .shifting import gear_ratios, neutral_gear, sim_grade
 from .sources import Telemetry
+from .wbal import WPrimeBalance, predict
 from .workout import Workout, WorkoutPlayer
 
 
@@ -39,6 +41,9 @@ class Ride:
         self._slow_since: Optional[float] = None  # cadence below release threshold since
         self._ramp_from = 0.0
         self._ramp_t0 = 0.0
+        self.cues: list[str] = []  # beeps due this tick (see cues.py)
+        self.wbal = WPrimeBalance()
+        self._wbal_plan: tuple = (None, [])  # (inputs, predicted W′ balance over the workout)
 
     # ---- workout ---------------------------------------------------------
     def load_workout(self, workout: Workout) -> None:
@@ -53,6 +58,7 @@ class Ride:
         self.ride_time = 0.0
         self.distance_km = 0.0
         self._energy_j = 0.0
+        self.wbal.reset()
         if self.player:
             self.load_workout(self.player.workout)
 
@@ -214,6 +220,16 @@ class Ride:
             return None
         return round(frac * self.workout_ftp * self.settings.intensity / 100)
 
+    def wbal_plan(self) -> list[tuple[float, float]]:
+        """Predicted W′ balance over the loaded workout, if every target is hit (cached)."""
+        if not self.player:
+            return []
+        s = self.settings
+        key = (id(self.player.workout), self.workout_ftp, s.intensity, s.ftp, s.w_prime_j)
+        if self._wbal_plan[0] != key:
+            self._wbal_plan = (key, predict(self.player.workout, self.watts_for, s.ftp, s.w_prime_j))
+        return self._wbal_plan[1]
+
     # ---- update loop -------------------------------------------------------
     def tick(self, dt: float) -> None:
         self._now += dt
@@ -230,12 +246,17 @@ class Ride:
             self._energy_j += (t.power or 0) * dt
             self.distance_km += (self.speed_kmh or 0) * dt / 3600
 
+        # raw power: W′ reacts within seconds, smoothing would hide short efforts
+        self.wbal.update(t.power or 0, self.settings.ftp, self.settings.w_prime_j, dt)
+
+        self.cues = []
         self._update_erg_engagement()
         if self.player:
             before = self.player.elapsed
             # after a start or a stop, the clock waits until ERG is back at the target, so the
             # soft start doesn't eat into the interval
             self.player.tick(dt, self.pedaling and not self.clock_held)
+            self.cues = cues_between(self.player, before, self.player.elapsed)
             if self.player.elapsed > before and t.power is not None:
                 # keep ~1 sample per second for the trace
                 if not self.trace or self.player.elapsed - self.trace[-1][0] >= 1.0:

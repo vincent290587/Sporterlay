@@ -17,6 +17,13 @@ virtual gears when you're not following a workout.
 - Stopping (e.g. for a drink) stops the workout clock at once; when you restart, the clock waits until ERG is
   back at the target ("Clock waits for ERG"), so the soft start never eats into the interval
 - Virtual shifting (24 gears) whenever ERG isn't holding the power: Zwift Click or Ctrl+Alt+←/→
+- Countdown beeps (3-2-1, then a high tone for harder or a low tone for easier) before each workout step change,
+  plus a double blip 10 s before a hard effort
+- W′ balance gauge: how much of your anaerobic capacity is left, plus the predicted W′ balance over the workout
+  (dashed line on the profile)
+- Every ride is saved as a `.fit` file and uploaded to intervals.icu, paired with the planned workout
+- Windows: the browser video pauses when you stop pedaling and resumes when you start again (Spotify is left
+  alone), and Spotify's current track shows in the overlay when it changes
 
 ## Windows setup
 
@@ -113,6 +120,26 @@ virtual gear so it feels like changing gear on a flat road (one gear ≈ 7 %, ro
 The SPEED shown is the virtual speed in that gear. Set `real_chainring` / `real_cog` in the settings file to
 the gear your bike is actually in on the trainer (default 50×17); the starting gear matches it.
 Rider + bike weight are sent to the trainer so its physics match.
+
+## Rides (.fit) and upload
+Rides are recorded from the first pedal stroke and saved to `%APPDATA%\Sporterlay\activities` (tray →
+*Rides → Open rides folder*). A ride ends 30 s after you stop once the workout is finished, after 10 min without
+pedaling, when you quit, on *Reset ride*, or with *Rides → Save ride now*. Rides under 2 minutes are dropped.
+While riding, samples go to a journal file first, so a crash loses nothing: the ride is saved at the next start.
+
+With an intervals.icu API key, each ride is uploaded right away (laps = workout steps, paired with the planned
+workout when it came from intervals.icu). If you're offline, it's kept in `activities\pending` and retried at the
+next start. Toggle with *intervals.icu → Upload rides to intervals.icu*. Demo-mode rides are never uploaded.
+
+## Extras
+- **Beeps**: tray → *Extras → Beeps before interval changes*.
+- **W′ balance**: tray → *Extras → W′ balance gauge*. CP is your FTP; W′ (default 20 kJ) comes from intervals.icu
+  with *Use FTP, weight and W′ from intervals.icu*, or tray → *W′…*. A warning shows when it drops under 25 %.
+- **Auto-pause video** (Windows): tray → *Extras → Pause the browser video when I stop pedaling*. It waits 3 s
+  (`autopause_delay_s`), only pauses after you've started riding, and only resumes a video it paused itself.
+  It recognises Chrome, Edge, Firefox, Brave, Opera and Vivaldi. For another browser, add part of its app id
+  (logged as "Media session found: app id …") to `autopause_apps` in `settings.json`.
+- **Spotify now playing** (Windows): tray → *Extras → Spotify now playing*: off, when the track changes, or always.
 
 ## Workout library (ai_advise database)
 Tray → **Workout library…** opens a browser for your ai_advise workout database: search by name, filter by

@@ -15,9 +15,12 @@ from PyQt6.QtGui import QAction, QActionGroup, QColor, QIcon, QPainter, QPixmap,
 from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLineEdit, QMenu, QMessageBox,
                              QSystemTrayIcon)
 
+from . import recorder
 from .buttonmap import ButtonMap
 from .click import LEFT_POD, RIGHT_POD, ClickController
+from .cues import Beeper
 from .intervals import IntervalsClient
+from .media import AutoPause, MediaSessions, NowPlaying
 from .overlay import Overlay, _family, fmt_time
 from .ride import Ride
 from .settings import Settings, config_dir
@@ -28,6 +31,9 @@ from .workoutdb import load_workout_db
 log = logging.getLogger("sporterlay")
 TICK_MS = 250
 FLASH_S = 2.0  # how long an action confirmation stays in the status line
+RIDE_IDLE_END_S = 600  # a ride ends after this long without pedaling...
+RIDE_DONE_END_S = 30  # ...or this long once the workout is finished
+WBAL_WARN, WBAL_REARM = 0.25, 0.35  # W′ balance warning and when it can warn again
 
 # Actions a Zwift Click button can be bound to: key -> (menu label, button map label, App method, args...)
 ACTIONS = {
@@ -65,6 +71,10 @@ def workout_dirs() -> list[Path]:
     user = config_dir() / "workouts"
     user.mkdir(parents=True, exist_ok=True)
     return [resource_dir() / "workouts", user]
+
+
+def activities_dir() -> Path:
+    return config_dir() / "activities"
 
 
 def make_icon(size: int = 64) -> QIcon:
@@ -127,6 +137,7 @@ class Signals(QObject):
     button = pyqtSignal(str)
     click_pods = pyqtSignal(object)  # dict address -> device type, to persist
     icu_done = pyqtSignal(object, object, object, bool)  # workouts, athlete, error, startup
+    upload_done = pyqtSignal(int, object)  # rides uploaded, error (str) or None
 
 
 class App:
@@ -139,14 +150,23 @@ class App:
             self.settings.ftp = args.ftp
         self.source = DemoSource(self.settings.ftp) if args.demo else AntSource(
             self.settings.fe_device_id, self.settings.hr_device_id)
+        self.demo = args.demo
         self.ride = Ride(self.settings, self.source)
-        self.overlay = Overlay(self.ride, self.status_text)
+        self.overlay = Overlay(self.ride, self.status_text, self.now_playing_text)
+        self.beeper = Beeper(config_dir() / "sounds")
+        self.media = MediaSessions()
+        self.autopause = AutoPause()
+        self.music = NowPlaying()
+        self.recorder = recorder.RideRecorder(activities_dir(), demo=args.demo)
+        self._uploading = False
+        self._wbal_warned = False
 
         self.signals = Signals()
         self.signals.button.connect(self.click_button)
         self._flash = ("", 0.0)
         self.signals.click_pods.connect(lambda pods: self._set("click_pods", pods))
         self.signals.icu_done.connect(self._icu_done)
+        self.signals.upload_done.connect(self._upload_done)
         self.icu_workouts = []
         self.icu_status = ""
         self.click = None
@@ -200,14 +220,141 @@ class App:
         self.overlay.show()
         if self.settings.icu_api_key:
             self.refresh_intervals(startup=True)
+        QTimer.singleShot(0, self._recover_rides)
 
     # ---- loop --------------------------------------------------------------------
     def tick(self):
         now = time.monotonic()
         dt, self._last = min(now - self._last, 1.0), now
         self.ride.tick(dt)
+        if self.ride.cues and self.settings.beeps:
+            self.beeper.play(self.ride.cues[-1])  # one sound per tick; the step change wins over a tick
+        self._record()
+        self._media(now)
+        self._wbal_warning()
         self.overlay.refresh()
         self.button_map.refresh()
+
+    def _media(self, now: float) -> None:
+        s = self.settings
+        sessions = self.media.sessions
+        pause, resume = self.autopause.update(now, self.ride.pedaling, sessions, s.autopause_video,
+                                              s.autopause_delay_s, s.autopause_apps)
+        self.media.pause(pause)
+        self.media.play(resume)
+        self.music.update(now, sessions)
+
+    def now_playing_text(self):
+        return self.music.text(time.monotonic(), self.settings.now_playing)
+
+    def _wbal_warning(self) -> None:
+        frac = self.ride.wbal.fraction()
+        if frac is None or not self.settings.show_wbal:
+            return
+        if frac < WBAL_WARN and not self._wbal_warned:
+            self._wbal_warned = True
+            self.flash(f"W′ below {round(WBAL_WARN * 100)} %")
+        elif frac > WBAL_REARM:
+            self._wbal_warned = False
+
+    # ---- ride recording and upload ---------------------------------------------------
+    def _record(self) -> None:
+        if not self.settings.record_rides:
+            return
+        r, t, now = self.ride, self.ride.telemetry, time.time()
+        p = r.player
+        lap = (id(p), p.index()) if p and not p.finished else None  # one lap per workout step
+        speed = r.speed_kmh
+        self.recorder.sample(now, r.pedaling, t.power, t.heart_rate, t.cadence,
+                             None if speed is None else speed / 3.6, r.distance_km * 1000, lap)
+        if self.recorder.active:
+            idle = self.recorder.idle_s(now)
+            if idle >= RIDE_IDLE_END_S or (p and p.finished and idle >= RIDE_DONE_END_S):
+                self.finish_ride()
+
+    def finish_ride(self, quitting: bool = False) -> None:
+        result = self.recorder.finish()
+        if result is None:
+            return
+        fit, meta = result
+        self.flash(f"Ride saved ({fmt_time(meta['moving_s'])})")
+        self._queue_upload(fit, meta)
+        self.upload_pending(quitting)
+
+    def _queue_upload(self, fit, meta) -> None:
+        if meta.get("demo"):  # never upload simulated rides
+            return
+        if self.settings.icu_auto_upload and self.settings.icu_api_key:
+            recorder.queue_upload(fit, {**meta, "external_id": f"sporterlay-{int(meta['start'])}"})
+
+    def _recover_rides(self) -> None:
+        for fit, meta in recorder.recover(activities_dir()):
+            self.tray.showMessage("Sporterlay", f"Recovered an unfinished ride: {fit.name}", self.icon, 4000)
+            self._queue_upload(fit, meta)
+        self.upload_pending()
+
+    def upload_pending(self, quitting: bool = False) -> None:
+        s = self.settings
+        if self._uploading or not s.icu_api_key or not s.icu_auto_upload:
+            return
+        todo = recorder.pending_uploads(activities_dir())
+        if not todo:
+            return
+        self._uploading = True
+        key, athlete = s.icu_api_key, s.icu_athlete_id
+
+        def work():
+            client = IntervalsClient(key, athlete, timeout=60)
+            done, error = 0, None
+            for fit, meta in todo:
+                try:
+                    aid = client.upload_activity(fit, meta.get("name") or "", meta.get("event_id"),
+                                                 meta.get("external_id") or "")
+                    recorder.mark_uploaded(fit)
+                    done += 1
+                    log.info("Uploaded %s to intervals.icu (activity %s)", fit.name, aid)
+                except Exception as e:
+                    error = str(e)
+                    log.warning("Upload of %s failed: %s", fit.name, e)
+                    break  # probably offline: retry everything later
+            self.signals.upload_done.emit(done, error)
+
+        # when quitting, a non-daemon thread lets the upload finish after the window is gone
+        threading.Thread(target=work, name="upload", daemon=not quitting).start()
+
+    def _upload_done(self, done: int, error):
+        self._uploading = False
+        if error:
+            self.flash("Upload to intervals.icu failed, will retry")
+            self.icu_status = "upload failed, will retry"
+            QTimer.singleShot(15000, lambda: setattr(self, "icu_status", ""))
+        elif done:
+            self.flash("Ride uploaded to intervals.icu" if done == 1 else f"{done} rides uploaded to intervals.icu")
+
+    def save_ride_now(self):
+        if not self.recorder.active:
+            self.flash("Nothing recorded yet")
+            return
+        if self.recorder.samples < recorder.MIN_RIDE_S:
+            self.flash(f"Too short to save yet (under {recorder.MIN_RIDE_S // 60} min)")
+            return
+        self.finish_ride()
+
+    def reset_ride(self):
+        self.finish_ride()
+        self.ride.reset()
+
+    def toggle_recording(self):
+        self._toggle("record_rides")
+        if not self.settings.record_rides:
+            self.finish_ride()
+
+    def set_w_prime(self):
+        v, ok = QInputDialog.getDouble(None, "Sporterlay", "W′ (kJ), the work you can do above FTP:",
+                                       self.settings.w_prime_j / 1000, 5, 60, 1)
+        if ok:
+            self.settings.w_prime_j = round(v * 1000)
+            self.settings.save()
 
     def flash(self, text: str) -> None:
         """Briefly show an action confirmation in the status line."""
@@ -315,6 +462,8 @@ class App:
                 self.settings.ftp = athlete.ftp
             if athlete.weight_kg:
                 self.settings.weight_kg = round(athlete.weight_kg, 1)
+            if athlete.w_prime:
+                self.settings.w_prime_j = athlete.w_prime
             self.settings.save()
         today = [w for w in self.icu_workouts if w.date == dt.date.today()]
         busy = self.ride.player is not None and self.ride.player.started
@@ -323,9 +472,19 @@ class App:
             self.tray.showMessage("Sporterlay", f"Today's workout loaded: {today[0].name}", self.icon, 4000)
 
     def load_planned(self, pw):
-        self.ride.load_workout(pw.workout)
-        self.settings.last_workout = f"icu:{pw.event_id}"
-        self.settings.save()
+        self.use_workout(pw.workout, f"icu:{pw.event_id}")
+
+    def use_workout(self, workout, key: str | None = None):
+        """Load a workout (key: what to restore at next start; None = don't change it)."""
+        p = self.ride.player
+        if p is not None and p.finished and self.recorder.active:
+            self.finish_ride()  # the previous workout is done: the next one is a new ride
+        self.ride.load_workout(workout)
+        event = int(key[4:]) if key and key.startswith("icu:") else None
+        self.recorder.set_meta(("DEMO " if self.demo else "") + workout.name, event)
+        if key is not None:
+            self.settings.last_workout = key
+            self.settings.save()
         self.overlay.refresh()
 
     # ---- ai_advise workout library ---------------------------------------------------
@@ -356,7 +515,7 @@ class App:
             return
         match = next((w for w in workouts if w.name == name), None)
         if match:
-            self.ride.load_workout(match.workout)
+            self.use_workout(match.workout)
 
     def open_library(self):
         from .library import LibraryDialog
@@ -372,10 +531,7 @@ class App:
             path, workouts = self.library()
         dlg = LibraryDialog(workouts, lambda f: round(f * self.settings.ftp), path.name)
         if dlg.exec() and dlg.chosen:
-            self.ride.load_workout(dlg.chosen.workout)
-            self.settings.last_workout = f"lib:{dlg.chosen.name}"
-            self.settings.save()
-            self.overlay.refresh()
+            self.use_workout(dlg.chosen.workout, f"lib:{dlg.chosen.name}")
 
     def choose_library(self) -> bool:
         start = str(Path(self.settings.workout_db).parent) if self.settings.workout_db else str(config_dir())
@@ -414,10 +570,7 @@ class App:
             if not quiet:
                 QMessageBox.warning(None, "Sporterlay", f"Could not load workout:\n{path}\n\n{e}")
             return
-        self.ride.load_workout(wo)
-        self.settings.last_workout = str(path)
-        self.settings.save()
-        self.overlay.refresh()
+        self.use_workout(wo, str(path))
 
     def pick_workout(self):
         start = str(workout_dirs()[1])
@@ -505,6 +658,8 @@ class App:
             self.settings.save()
 
     def quit(self):
+        self.finish_ride(quitting=True)
+        self.media.close()
         self.source.set_free_ride(0.0)
         self.settings.save()
         if self.hotkeys:
@@ -553,8 +708,9 @@ class App:
                     menu=icu)
             icu.addSeparator()
             act("Refresh", self.refresh_intervals, menu=icu)
-            act("Use FTP and weight from intervals.icu", lambda: self._toggle("icu_sync_ftp"),
+            act("Use FTP, weight and W′ from intervals.icu", lambda: self._toggle("icu_sync_ftp"),
                 checked=s.icu_sync_ftp, menu=icu)
+            act("Upload rides to intervals.icu", self._toggle_upload, checked=s.icu_auto_upload, menu=icu)
             act("Load today's workout at startup", lambda: self._toggle("icu_autoload_today"),
                 checked=s.icu_autoload_today, menu=icu)
             act("Change API key…", self.set_api_key, menu=icu)
@@ -614,6 +770,25 @@ class App:
         m.addSeparator()
         act(f"FTP: {s.ftp} W…", self.set_ftp)
         act(f"Weight: {s.weight_kg:g} kg…", self.set_weight)
+        act(f"W′: {s.w_prime_j / 1000:g} kJ…", self.set_w_prime)
+        xm = m.addMenu("Extras")
+        act("Beeps before interval changes", lambda: self._toggle("beeps"), checked=s.beeps, menu=xm)
+        act("W′ balance gauge", self._toggle_wbal, checked=s.show_wbal, menu=xm)
+        win = sys.platform == "win32"
+        act("Pause the browser video when I stop pedaling" + ("" if win else "  (Windows only)"),
+            lambda: self._toggle("autopause_video"), checked=s.autopause_video, enabled=win, menu=xm)
+        npm = xm.addMenu("Spotify now playing" + ("" if win else "  (Windows only)"))
+        npm.setEnabled(win)
+        grp = QActionGroup(npm)
+        for key, label in (("off", "Off"), ("change", "When the track changes"), ("always", "Always")):
+            grp.addAction(act(label, lambda key=key: self._set("now_playing", key),
+                              checked=s.now_playing == key, menu=npm))
+        rm = m.addMenu("Rides")
+        act("Record rides (.fit)", self.toggle_recording, checked=s.record_rides, menu=rm)
+        rec = self.recorder
+        act(f"Save ride now  ({fmt_time(rec.samples)} recorded)" if rec.active else "Save ride now",
+            self.save_ride_now, enabled=rec.active, menu=rm)
+        act("Open rides folder", lambda: self._open_folder(activities_dir()), menu=rm)
         pm = m.addMenu("Power smoothing")
         grp = QActionGroup(pm)
         for v in (1, 3, 5, 10):
@@ -627,12 +802,21 @@ class App:
         act("Lock position (click-through)\tCtrl+Alt+L", self.toggle_lock, checked=s.locked)
         act("Reset position and size", self._reset_pos)
         act("Show overlay\tCtrl+Alt+H", self.toggle_visible, checked=self.overlay.isVisible())
-        act("Reset ride (time, distance, workout)", self.ride.reset)
+        act("Reset ride (saves it, then resets time, distance, workout)", self.reset_ride)
         m.addSeparator()
         act("Quit", self.quit)
 
     def _toggle(self, key):
         self._set(key, not getattr(self.settings, key))
+
+    def _toggle_wbal(self):
+        self._toggle("show_wbal")
+        self.overlay.refresh()  # width changes
+
+    def _toggle_upload(self):
+        self._toggle("icu_auto_upload")
+        if self.settings.icu_auto_upload:
+            self.upload_pending()
 
     def _neutral_gear(self):
         from .shifting import neutral_gear
@@ -658,6 +842,7 @@ class App:
         from PyQt6.QtCore import QUrl
         from PyQt6.QtGui import QDesktopServices
 
+        path.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
     def run(self) -> int:

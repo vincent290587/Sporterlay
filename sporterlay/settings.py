@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Optional
 
+from .media import BROWSERS
+
 log = logging.getLogger(__name__)
 
 
@@ -62,6 +64,19 @@ class Settings:
     # Tacx Neo isokinetic mode: target cadence in the real gear (the mode itself is never saved,
     # so the trainer always starts in ERG / normal mode)
     iso_cadence: int = 60
+    # countdown beeps before workout step changes
+    beeps: bool = True
+    # W′ balance gauge; CP is taken as FTP. W′ comes from intervals.icu when FTP sync is on
+    show_wbal: bool = True
+    w_prime_j: int = 20000
+    # ride recording (.fit in the activities/ subfolder) and upload to intervals.icu
+    record_rides: bool = True
+    icu_auto_upload: bool = True
+    # Windows: pause the browser video when the rider stops (other apps, e.g. Spotify, are left alone)
+    autopause_video: bool = True
+    autopause_delay_s: float = 3.0
+    autopause_apps: list = field(default_factory=lambda: list(BROWSERS))  # app id substrings
+    now_playing: str = "change"  # Spotify track in the overlay: "off", "change" (for a few s) or "always"
 
     @classmethod
     def load(cls) -> "Settings":
