@@ -97,6 +97,10 @@ def _patch_usb_find() -> None:
             finally:
                 usb.util.dispose_resources(dev)  # openant reopens it; don't hold a second handle
             log.debug("USB device opens via %s", type(be).__module__)
+            if type(be).__module__.endswith("libusb0"):
+                # usb_reset() makes the stick re-enumerate and invalidates the handle openant
+                # keeps using ("device does not exist"). openant sends an ANT reset anyway.
+                dev.reset = lambda: None
             return dev
         return orig_find(*args, **kwargs)
 
@@ -107,6 +111,45 @@ def _patch_usb_find() -> None:
     logging.getLogger("openant.base.ant").addFilter(
         lambda r: "timeout error" not in r.getMessage()
     )
+
+
+def _patch_openant() -> None:
+    """Fix two openant channel problems that starve or kill the trainer/HR channels.
+
+    - AntPlusDevice opens its channel with extended assignment 0x01 (background
+      scanning). Such a channel never tracks the device's timeslot and only catches
+      ~1 in 10 messages (measured 0.36/s vs 3.7/s from a 4 Hz HR strap), so assign
+      plain channels instead.
+    - When a wildcard search finds a device, openant closes the channel, pins its ID and
+      reopens it straight away. A close only completes at EVENT_CHANNEL_CLOSED, so a fast
+      stick (ANT USB2) rejects the reopen with CHANNEL_IN_WRONG_STATE and the node dies.
+      Retry the open briefly.
+    """
+    from openant.devices.common import AntPlusDevice
+    from openant.easy.channel import Channel
+
+    if getattr(Channel.open, "_sporterlay", False):
+        return
+    orig_open_channel = AntPlusDevice.open_channel
+
+    def open_channel(self, extended=True, channel_type=None, ext_assign=None):
+        return orig_open_channel(self, extended, channel_type, ext_assign)
+
+    AntPlusDevice.open_channel = open_channel
+    orig_open = Channel.open
+
+    def open_(self):
+        deadline = time.monotonic() + 2.0
+        while True:
+            try:
+                return orig_open(self)
+            except Exception as e:
+                if "CHANNEL_IN_WRONG_STATE" not in str(e) or time.monotonic() > deadline:
+                    raise
+                time.sleep(0.05)
+
+    open_._sporterlay = True
+    Channel.open = open_
 
 
 class AntSource:
@@ -172,6 +215,7 @@ class AntSource:
         from openant.devices.heart_rate import HeartRate
         from openant.easy.node import Node
 
+        _patch_openant()
         node = Node()
         self._node = node
         node.set_network_key(0x00, ANTPLUS_NETWORK_KEY)
