@@ -319,12 +319,16 @@ class AntSource:
         # Acknowledged sends can block for a while, so they run on their own thread.
         while not self._stop.is_set():
             with self._cmd_cv:
-                while self._pending is None and not self._config_dirty and not self._stop.is_set():
+                # Without a trainer there's nothing to send: wait (fe_found() notifies). Checking
+                # only for work here made the thread spin at 100 % CPU until a trainer was found,
+                # because configure() marks the config dirty at startup.
+                while not self._stop.is_set() and (
+                        self._fe is None or (self._pending is None and not self._config_dirty)):
                     self._cmd_cv.wait(1.0)
                 cmd, self._pending = self._pending, None
-            fe = self._fe
+                fe = self._fe
             if fe is None:
-                continue
+                continue  # stopping
             if self._config_dirty:
                 self._config_dirty = False
                 self._send_config(fe, self._rider_kg, self._bike_kg)
