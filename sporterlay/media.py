@@ -5,7 +5,7 @@ each with an app id: "Chrome", "MSEdge", "308046B0AF4A39CB" (Firefox), "Spotify.
 global play/pause *key* goes to whichever session Windows thinks is current, often Spotify,
 so instead `MediaSessions` talks to the browser's session directly and leaves Spotify alone.
 
-`MediaSessions` polls the sessions once a second on its own thread (asyncio loop for the
+`MediaSessions` polls the sessions twice a second on its own thread (asyncio loop for the
 WinRT calls) and keeps a snapshot; commands are queued to that thread. Off Windows, or
 without the winrt packages, it stays empty and does nothing.
 
@@ -23,7 +23,7 @@ from typing import Optional
 
 log = logging.getLogger(__name__)
 
-POLL_S = 1.0
+POLL_S = 0.5
 BROWSERS = ["chrome", "msedge", "firefox", "308046b0af4a39cb", "brave", "opera", "vivaldi"]
 
 
@@ -157,6 +157,7 @@ class AutoPause:
 
     def __init__(self) -> None:
         self.paused: set[tuple[str, str]] = set()  # what we paused, to resume
+        self._held: set[tuple[str, str]] = set()  # already paused by the rider when we paused
         self._armed = False
         self._stopped_since: Optional[float] = None
         self._acted = False  # paused already during this stop (don't fight a manual play)
@@ -174,7 +175,13 @@ class AutoPause:
             if not self.paused:
                 return [], []
             # resume only what's still paused: if the rider pressed play (or closed the tab), leave it
-            resume = [s.key for s in sessions if s.key in self.paused and s.status == "paused"]
+            paused = [s for s in sessions if s.status == "paused"]
+            resume = [s.key for s in paused if s.key in self.paused]
+            # the title can change while paused (YouTube ad ending, autoplay): if one of ours is
+            # gone, resume that app's paused sessions, except those the rider had paused already
+            gone = {app for app, title in self.paused if (app, title) not in {s.key for s in sessions}}
+            resume += [s.key for s in paused
+                       if s.app in gone and s.key not in self.paused and s.key not in self._held]
             self.paused.clear()
             return [], resume
         if not self._armed:
@@ -186,6 +193,7 @@ class AutoPause:
         self._acted = True
         pause = [s.key for s in sessions if s.status == "playing" and matches(s, apps)]
         self.paused.update(pause)
+        self._held = {s.key for s in sessions if s.status == "paused"}
         return pause, []
 
 
