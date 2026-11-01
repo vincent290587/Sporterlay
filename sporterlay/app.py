@@ -10,7 +10,7 @@ import threading
 import time
 from pathlib import Path
 
-from PyQt6.QtCore import QAbstractNativeEventFilter, QObject, QTimer, pyqtSignal
+from PyQt6.QtCore import QAbstractNativeEventFilter, QObject, QRectF, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QActionGroup, QColor, QIcon, QPainter, QPixmap, QFont
 from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLineEdit, QMenu, QMessageBox,
                              QSystemTrayIcon)
@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLineEdit,
 from .buttonmap import ButtonMap
 from .click import LEFT_POD, RIGHT_POD, ClickController
 from .intervals import IntervalsClient
-from .overlay import Overlay, fmt_time
+from .overlay import Overlay, _family, fmt_time
 from .ride import Ride
 from .settings import Settings, config_dir
 from .sources import AntSource, DemoSource
@@ -67,16 +67,17 @@ def workout_dirs() -> list[Path]:
     return [resource_dir() / "workouts", user]
 
 
-def make_icon() -> QIcon:
-    pm = QPixmap(64, 64)
+def make_icon(size: int = 64) -> QIcon:
+    pm = QPixmap(size, size)
     pm.fill(QColor(0, 0, 0, 0))
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     p.setBrush(QColor(255, 110, 50))
     p.setPen(QColor(0, 0, 0, 0))
-    p.drawEllipse(2, 2, 60, 60)
-    f = QFont()
-    f.setPixelSize(40)
+    m = size / 32
+    p.drawEllipse(QRectF(m, m, size - 2 * m, size - 2 * m))
+    f = QFont(_family())
+    f.setPixelSize(round(size * 0.625))
     f.setBold(True)
     p.setFont(f)
     p.setPen(QColor(255, 255, 255))
