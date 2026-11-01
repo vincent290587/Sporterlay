@@ -6,7 +6,8 @@ pausing, the ERG ramp hold and not pedaling can't make it beep early or twice, a
 back (which jump the clock outside a tick) stay silent.
 
 `Beeper` plays them without blocking the Qt thread: short WAV tones are generated once into
-the config folder and played with winsound's SND_ASYNC (it mixes over Spotify / YouTube).
+the config folder and played with winsound's SND_ASYNC (it mixes over Spotify / YouTube);
+on Linux through pw-play / paplay / aplay.
 """
 
 from __future__ import annotations
@@ -134,7 +135,24 @@ class Beeper:
             if path is not None:
                 # SND_ASYNC returns at once; a new sound cuts the previous one short, which is fine
                 winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
-        else:
-            from PyQt6.QtWidgets import QApplication
+        else:  # Linux (development): the same tones through PipeWire / PulseAudio / ALSA
+            path = self._file(name)
+            player = self._linux_player()
+            if path is None or player is None:
+                from PyQt6.QtWidgets import QApplication
 
-            QApplication.beep()
+                QApplication.beep()
+                return
+            import subprocess
+
+            try:
+                subprocess.Popen([player, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError as e:
+                log.debug("Could not play %s: %s", path, e)
+
+    def _linux_player(self) -> Optional[str]:
+        if not hasattr(self, "_player"):
+            import shutil
+
+            self._player = next((p for p in ("pw-play", "paplay", "aplay") if shutil.which(p)), None)
+        return self._player
