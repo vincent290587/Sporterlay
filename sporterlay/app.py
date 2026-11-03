@@ -1125,6 +1125,13 @@ class App:
         act("Harder", lambda: self.shift(+1), menu=gm)
         act("Easier", lambda: self.shift(-1), menu=gm)
         act("Back to neutral gear", self._neutral_gear, menu=gm)
+        if s.bikes:
+            gm.addSeparator()
+            grp = QActionGroup(gm)
+            for b in s.bikes:
+                label = f"{b.get('name')}  ({b.get('chainring')}×{b.get('cog')}, {b.get('weight_kg', '?')} kg)"
+                grp.addAction(act(label, lambda name=b.get("name"): self.set_bike(name),
+                                  checked=b.get("name") == s.bike, menu=gm))
         gm.addSeparator()
         cs = self.click.status if self.click else "Zwift Click disabled"
         act(cs, lambda: None, enabled=False, menu=gm)
@@ -1228,6 +1235,17 @@ class App:
         self._toggle("icu_auto_upload")
         if self.settings.icu_auto_upload:
             self.upload_pending()
+
+    def set_bike(self, name):
+        if not self.settings.use_bike(name):
+            return
+        # the virtual gear stays, so it feels the same on either bike; the trainer gets the new
+        # real ratio (sim grade, isokinetic speed range) and weight right away
+        self.ride.set_iso_cadence(self.settings.iso_cadence)
+        self.ride.shift(0)
+        self.settings.save()
+        self.flash(f"Bike: {name}")
+        self.overlay.refresh()
 
     def _neutral_gear(self):
         from .shifting import neutral_gear

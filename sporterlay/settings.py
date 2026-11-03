@@ -60,6 +60,9 @@ class Settings:
     real_chainring: int = 50  # gear the bike is actually in on the trainer
     real_cog: int = 17
     bike_weight_kg: float = 9.0
+    # bikes swapped onto the trainer: choosing one (tray → Bike) copies its gear and weight above
+    bikes: list = field(default_factory=list)  # [{"name", "chainring", "cog", "weight_kg"}]
+    bike: str = ""  # name of the bike on the trainer
     wheel_m: float = 2.096  # wheel circumference the trainer's speed is based on (700x25c)
     # Tacx Neo isokinetic mode: target cadence in the real gear (the mode itself is never saved,
     # so the trainer always starts in ERG / normal mode)
@@ -97,12 +100,26 @@ class Settings:
         try:
             raw = json.loads(p.read_text(encoding="utf-8"))
             known = {f.name for f in fields(cls)}
-            return cls(**{k: v for k, v in raw.items() if k in known})
+            s = cls(**{k: v for k, v in raw.items() if k in known})
+            if s.bike:
+                s.use_bike(s.bike)  # picks up edits to the bike list
+            return s
         except FileNotFoundError:
             return cls()
         except Exception as e:
             log.warning("Ignoring unreadable settings %s: %s", p, e)
             return cls()
+
+    def use_bike(self, name: str) -> bool:
+        """Make `name` from `bikes` the bike on the trainer (real gear and bike weight)."""
+        for b in self.bikes:
+            if b.get("name") == name:
+                self.bike = name
+                self.real_chainring = int(b.get("chainring", self.real_chainring))
+                self.real_cog = int(b.get("cog", self.real_cog))
+                self.bike_weight_kg = float(b.get("weight_kg", self.bike_weight_kg))
+                return True
+        return False
 
     def save(self) -> None:
         d = config_dir()

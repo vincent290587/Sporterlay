@@ -125,6 +125,17 @@ The SPEED shown is the virtual speed in that gear. Set `real_chainring` / `real_
 the gear your bike is actually in on the trainer (default 50×17); the starting gear matches it.
 Rider + bike weight are sent to the trainer so its physics match.
 
+If you swap bikes on the trainer, list them in the settings file and pick the one on the trainer in
+tray → *Gear* (the virtual gear stays, so both bikes feel the same):
+```json
+"bikes": [
+  {"name": "Road", "chainring": 52, "cog": 14, "weight_kg": 8.0},
+  {"name": "Gravel", "chainring": 44, "cog": 14, "weight_kg": 9.9}
+],
+"bike": "Road"
+```
+The Zwift Cog counts as 14 teeth (18 on Elite trainers).
+
 ## Rides (.fit) and upload
 Rides are recorded from the first pedal stroke and saved to `%APPDATA%\Sporterlay\activities` (tray →
 *Rides → Open rides folder*). A ride ends 30 s after you stop once the workout is finished, after 10 min without
