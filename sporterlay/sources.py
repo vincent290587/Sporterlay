@@ -176,7 +176,7 @@ class AntSource:
         self._stop = threading.Event()
         self._last_cmd: Optional[tuple] = None
         self._pending: Optional[tuple] = None
-        self._rider_kg, self._bike_kg = 75.0, 9.0
+        self._config = (75.0, 9.0, 2.096, 0.0)  # rider kg, bike kg, wheel circumference m, gear ratio
         self._iso_on = False
         self._config_dirty = False
         self._cmd_cv = threading.Condition()
@@ -298,10 +298,11 @@ class AntSource:
         m = fe.data["common"].manufacturer_id if fe is not None else 0xFFFF
         return None if m == 0xFFFF else m
 
-    def configure(self, rider_kg: float, bike_kg: float) -> None:
-        """Rider/bike mass for the trainer's simulation mode (sent when the trainer is found)."""
-        if (rider_kg, bike_kg) != (self._rider_kg, self._bike_kg):
-            self._rider_kg, self._bike_kg = rider_kg, bike_kg
+    def configure(self, rider_kg: float, bike_kg: float, wheel_m: float = 2.096, gear_ratio: float = 0.0) -> None:
+        """Rider/bike mass, wheel size and real gear for the trainer (sent when the trainer is found)."""
+        config = (rider_kg, bike_kg, wheel_m, gear_ratio)
+        if config != self._config:
+            self._config = config
             self._config_dirty = True
             with self._cmd_cv:
                 self._cmd_cv.notify()
@@ -331,19 +332,24 @@ class AntSource:
                 continue  # stopping
             if self._config_dirty:
                 self._config_dirty = False
-                self._send_config(fe, self._rider_kg, self._bike_kg)
+                self._send_config(fe, *self._config)
             if cmd is not None:
                 self._send_now(fe, cmd)
 
     @staticmethod
-    def _send_config(fe, rider_kg: float, bike_kg: float) -> None:
+    def _send_config(fe, rider_kg: float, bike_kg: float, wheel_m: float, gear_ratio: float) -> None:
         from .shifting import WIND_K
 
         try:
-            # page 55 user configuration: rider 0.01 kg, bike 0.05 kg (12 bit), wheel 0.70 m
+            # page 55 user configuration: rider 0.01 kg, bike 0.05 kg (12 bit), wheel diameter in
+            # 0.01 m plus a 0–9 mm offset (from wheel_m, so the trainer's speed and isokinetic
+            # speed use the same wheel as Sporterlay), gear ratio front/rear in 0.03 (0 = unknown)
             u = int(round(rider_kg * 100))
             b = int(round(bike_kg / 0.05)) & 0xFFF
-            fe.send_acknowledged_data([0x37, u & 0xFF, (u >> 8) & 0xFF, 0xFF, 0x0F | ((b & 0xF) << 4), b >> 4, 70, 0x00])
+            d_mm = int(round(wheel_m / math.pi * 1000))
+            g = min(255, int(round(gear_ratio / 0.03)))
+            fe.send_acknowledged_data([0x37, u & 0xFF, (u >> 8) & 0xFF, 0xFF, (d_mm % 10) | ((b & 0xF) << 4), b >> 4,
+                                       d_mm // 10, g])
             # page 50 wind resistance: coefficient 0.01 kg/m, no wind (127 = 0 km/h), drafting 1.00
             fe.send_acknowledged_data([0x32, 0xFF, 0xFF, 0xFF, 0xFF, int(round(WIND_K * 100)), 127, 100])
         except Exception as e:
@@ -434,7 +440,7 @@ class DemoSource:
 
     manufacturer_id = 89  # pretend to be a Tacx
 
-    def configure(self, rider_kg: float, bike_kg: float) -> None:
+    def configure(self, rider_kg: float, bike_kg: float, wheel_m: float = 2.096, gear_ratio: float = 0.0) -> None:
         self._mass = rider_kg + bike_kg
 
     def close(self) -> None:

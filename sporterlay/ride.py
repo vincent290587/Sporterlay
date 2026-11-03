@@ -265,7 +265,8 @@ class Ride:
         self._control_trainer()
 
     def _control_trainer(self) -> None:
-        self.source.configure(self.settings.weight_kg, self.settings.bike_weight_kg)
+        s = self.settings
+        self.source.configure(s.weight_kg, s.bike_weight_kg, s.wheel_m, self.real_ratio)
         if self.iso:
             self.source.set_isokinetic(self.iso_speed_ms())
             self._last_grade_t = -1.0
