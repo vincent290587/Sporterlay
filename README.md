@@ -72,7 +72,7 @@ Workouts with a fixed FTP (`ftpOverride` in the export) use that FTP, as in Zwif
   | Left pod | Action | Right pod | Action |
   |---|---|---|---|
   | Shift | Shift easier | Shift | Shift harder |
-  | ↑ / ↓ | Jump 4 gears harder / easier | A | Pause / resume workout |
+  | ↑ / ↓ | Fan +10 % / −10 % (KICKR Headwind) | A | Pause / resume workout |
   | ← | Restart interval (twice quickly: previous) | B | Next interval |
   | → | ERG on / off | Y / Z | Intensity +5 % / −5 % |
 
@@ -208,8 +208,8 @@ as the last page closes or the phone drops off the Wi-Fi). Ctrl+Alt+H still hide
 - **Fan (Wahoo KICKR Headwind)**: tray → *Extras → Fan → Control the fan from HR and W′*. Close the Wahoo app
   first (the fan accepts one connection). Sporterlay puts the fan in manual mode and runs it at whichever asks
   for more: your heart rate, or how much of your W′ you've used. It speeds up at once, slows down at most every
-  10 s, runs at 20 % or more while you ride, and turns off 60 s after you stop. Click buttons can be bound to
-  *Fan +10 % / −10 %* (until your next stop). The curves are in `fan.json` next to `settings.json` (tray →
+  10 s, runs at 20 % or more while you ride, and turns off 60 s after you stop. The left pod's ↑ / ↓ add
+  or take 10 % (until your next stop). The curves are in `fan.json` next to `settings.json` (tray →
   *Extras → Fan → Edit fan profile*), and changes apply within 2 s without a restart:
   - `hr`: `[bpm, fan %]` points, `wbal`: `[fraction of W′ used, fan %]` points, straight lines in between
   - `min` / `max` (% while riding), `step` (rounding), `min_hold_s` (slowing down), `off_after_stop_s`,

@@ -69,7 +69,7 @@ ACTIONS = {
 DEFAULT_CLICK_MAP = {
     "shift_up": "harder", "shift_down": "easier",
     "a": "pause", "b": "skip", "y": "int_up", "z": "int_down",
-    "dpad_up": "harder4", "dpad_down": "easier4", "dpad_left": "back", "dpad_right": "erg",
+    "dpad_up": "fan_up", "dpad_down": "fan_down", "dpad_left": "back", "dpad_right": "erg",
 }
 
 
