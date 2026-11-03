@@ -791,6 +791,11 @@ class App:
             self.settings.save()
             self.flash(f"Isokinetic {rpm} rpm")
             return
+        if self.ride.torque_target is not None:  # torque step: the paddles change the torque
+            self.ride.torque_offset += 2 if delta > 0 else -2
+            self.ride.shift(0)  # resend the grade now
+            self.flash(f"Torque {self.ride.torque_target:.0f} Nm")
+            return
         self.ride.shift(delta)
         if abs(delta) > 1:  # single shifts show in the GEAR cell; flag the jumps
             self.flash(f"Gear {self.settings.gear}" + (" (ERG active)" if self.ride.erg_active else ""))

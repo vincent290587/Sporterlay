@@ -118,6 +118,16 @@ with ERG off), and switching it off goes back to ERG (with the soft start) or no
 - The overlay shows **ISO RPM** instead of the gear. The mode is never saved: Sporterlay always starts in ERG / normal.
 - It uses Tacx's proprietary FE-C page 0xFC. Other trainers ignore it.
 
+## Torque steps
+A workout step written with a torque on intervals.icu, e.g. `- 300s 50Nm`, holds that torque at the cranks
+whatever your cadence (any trainer with simulation mode, not only the Neo). Sporterlay sets the grade at which
+turning the cranks takes 50 Nm in your real gear (tray → *Gear* → bike) and refreshes it as your speed changes,
+so power goes up and down with cadence. ERG is off for those steps; the overlay shows **TORQUE … Nm**, and the
+Click paddles change the torque by ±2 Nm for the rest of the workout.
+- intervals.icu doesn't export torque to the .zwo (the step comes through without a target), so it's read from
+  the workout text: each `- ` line is a step, and `5x …` repeats the steps below it up to the next blank line.
+  If the steps in the text don't line up with the .zwo, the torque targets are left out (see the log).
+
 ## Virtual shifting
 Outside ERG the trainer runs in simulation mode, and Sporterlay sets the slope from your speed and the
 virtual gear so it feels like changing gear on a flat road (one gear ≈ 7 %, roughly +1 % slope at 30 km/h).

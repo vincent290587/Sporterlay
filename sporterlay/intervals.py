@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .workout import Workout, parse_zwo_bytes
+from .workout import Workout, apply_torques, parse_zwo_bytes
 
 log = logging.getLogger(__name__)
 BASE = "https://intervals.icu/api/v1"
@@ -111,6 +111,7 @@ class IntervalsClient:
                 log.warning("Skipping intervals.icu workout %r: %s", name, e)
                 continue
             wo.name = name  # the calendar name is what the user recognises
+            apply_torques(wo, ev.get("description") or "")
             date = dt.date.fromisoformat((ev.get("start_date_local") or today.isoformat())[:10])
             out.append(PlannedWorkout(int(ev["id"]), date, name, sport, wo.duration, wo))
         out.sort(key=lambda w: (w.date, w.event_id))

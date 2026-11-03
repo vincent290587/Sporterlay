@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -19,6 +23,7 @@ class Segment:
     label: str = ""
     target_range: Optional[tuple[float, float]] = None  # (low, high) when the step is a range
     texts: list[tuple[float, str, float]] = field(default_factory=list)  # (offset s, message, duration s)
+    torque: Optional[float] = None  # Nm at the cranks, held in simulation mode (see apply_torques)
 
     def text_at(self, t: float) -> Optional[str]:
         for off, msg, dur in self.texts:
@@ -149,6 +154,52 @@ def _parse_root(root: ET.Element, fallback_name: str) -> Workout:
     if not segs:
         raise ValueError("Workout has no segments")
     return Workout(name, segs, desc, ftp_override)
+
+
+_NM = re.compile(r"(\d+(?:\.\d+)?)\s*nm\b", re.I)
+_REPEAT = re.compile(r"^(\d+)\s*x\b", re.I)
+
+
+def step_torques(description: str) -> list[Optional[float]]:
+    """Torque (Nm) of each step in an intervals.icu workout text, repeats expanded.
+
+    Steps are the "- " lines; "5x …" starts a block that repeats until the next blank or
+    heading line. intervals.icu doesn't export torque ("- 300s 50Nm") to the .zwo or its
+    workout_doc, so the text is the only place it survives.
+    """
+    out: list[Optional[float]] = []
+    block: list[Optional[float]] = []
+    reps = 1
+    for line in [*description.splitlines(), ""]:
+        s = line.strip()
+        if s.startswith("-"):
+            m = _NM.search(s)
+            block.append(float(m.group(1)) if m else None)
+            continue
+        out.extend(block * reps)
+        block = []
+        m = _REPEAT.match(s)
+        reps = int(m.group(1)) if m else 1
+    return out
+
+
+def apply_torques(workout: Workout, description: str) -> int:
+    """Give the workout's segments the torque targets from its intervals.icu text.
+    Returns how many segments got one (0 when the steps don't line up with the segments)."""
+    torques = step_torques(description)
+    if not any(t is not None for t in torques):
+        return 0
+    if len(torques) != len(workout.segments):
+        log.warning("%s: %d steps in the text but %d in the .zwo, ignoring its torque targets",
+                    workout.name, len(torques), len(workout.segments))
+        return 0
+    n = 0
+    for seg, nm in zip(workout.segments, torques):
+        if nm is not None:
+            seg.torque = nm
+            seg.label = seg.label or f"Torque {nm:g} Nm"
+            n += 1
+    return n
 
 
 class WorkoutPlayer:

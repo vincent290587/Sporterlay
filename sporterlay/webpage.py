@@ -87,7 +87,7 @@ body {
   container-type: inline-size; }
 .metric .v { font-size: clamp(20px, min(26cqw, 9vmin), 84px); font-weight: 800; line-height: 1.05; white-space: nowrap; }
 #hr .v { color: var(--hr); }
-#gear .v.gear { color: var(--amber); } #gear .v.erg { color: var(--label); } #gear .v.iso { color: var(--blue); }
+#gear .v.gear { color: var(--amber); } #gear .v.erg { color: var(--label); } #gear .v.iso, #gear .v.torque { color: var(--blue); }
 
 /* profile */
 #profile { grid-area: profile; padding: calc(var(--gap) * .6); display: flex; flex-direction: column; }
@@ -233,8 +233,9 @@ function render(s) {
   setV("dist", `${s.distance.toFixed(1)}<span class="unit">km</span>`);
   const g = $("gear").querySelector(".v");
   g.className = "v " + s.mode;
-  g.textContent = s.mode === "iso" ? s.iso_rpm : s.gear;
-  $("gear").querySelector(".label").textContent = s.mode === "iso" ? "Iso rpm" : s.mode === "erg" ? "ERG" : "Gear";
+  g.textContent = s.mode === "iso" ? s.iso_rpm : s.mode === "torque" ? s.torque : s.gear;
+  $("gear").querySelector(".label").textContent =
+    s.mode === "iso" ? "Iso rpm" : s.mode === "torque" ? "Torque Nm" : s.mode === "erg" ? "ERG" : "Gear";
 
   const w = s.workout;
   $("app").classList.toggle("noworkout", !w);

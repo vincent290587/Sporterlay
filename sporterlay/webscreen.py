@@ -210,7 +210,9 @@ def ride_state(ride, status: Optional[str], music: Optional[str], card=None, cue
         "speed": None if ride.speed_kmh is None else round(ride.speed_kmh, 1),
         "distance": round(ride.distance_km, 2),
         "time": round(ride.ride_time),
-        "mode": "iso" if ride.iso else ("erg" if ride.erg_active else "gear"),
+        "mode": "iso" if ride.iso else "torque" if ride.torque_target is not None else (
+            "erg" if ride.erg_active else "gear"),
+        "torque": None if ride.torque_target is None else round(ride.torque_target),
         "gear": s.gear,
         "iso_rpm": s.iso_cadence,
         "show_wbal": s.show_wbal,

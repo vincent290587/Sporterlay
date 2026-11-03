@@ -10,7 +10,7 @@ from typing import Optional
 
 from .cues import cues_between
 from .settings import Settings
-from .shifting import gear_ratios, neutral_gear, sim_grade
+from .shifting import gear_ratios, neutral_gear, sim_grade, torque_grade
 from .sources import Telemetry
 from .wbal import WPrimeBalance, predict
 from .workout import Workout, WorkoutPlayer
@@ -35,6 +35,7 @@ class Ride:
         self.grade = 0.0  # last grade sent in simulation mode
         self._last_grade_t = -1.0
         self.iso = False  # Tacx Neo isokinetic mode (opt-out from ERG / gears; not persisted)
+        self.torque_offset = 0.0  # Nm added to the workout's torque steps (Click paddles)
         # ERG soft start state
         self.erg_engaged = False
         self._spin_since: Optional[float] = None  # cadence above engage threshold since
@@ -49,6 +50,7 @@ class Ride:
     def load_workout(self, workout: Workout) -> None:
         self.player = WorkoutPlayer(workout)
         self.trace = []
+        self.torque_offset = 0.0
 
     def unload_workout(self) -> None:
         self.player = None
@@ -107,7 +109,16 @@ class Ride:
         """The workout calls for ERG right now (ERG on, workout running, step has a target)."""
         p = self.player
         return (self.settings.erg and not self.iso and p is not None and not p.paused and not p.finished
-                and p.target_fraction() is not None)
+                and p.current()[1].torque is None and p.target_fraction() is not None)
+
+    @property
+    def torque_target(self) -> Optional[float]:
+        """Crank torque (Nm) the current workout step holds, with the rider's offset."""
+        p = self.player
+        if self.iso or p is None or p.paused or p.finished:
+            return None
+        nm = p.current()[1].torque
+        return None if nm is None else max(5.0, nm + self.torque_offset)
 
     @property
     def erg_active(self) -> bool:
@@ -181,7 +192,7 @@ class Ride:
         v = self.telemetry.speed_kmh
         if v is None:
             return None
-        return v if self.erg_active or self.iso else v * self.gear_factor
+        return v if self.erg_active or self.iso or self.torque_target is not None else v * self.gear_factor
 
     # ---- derived values -----------------------------------------------------
     @property
@@ -275,11 +286,16 @@ class Ride:
             self.source.set_target_power(self.erg_target())
             self._last_grade_t = -1.0  # resend sim grade at once when ERG lets go
             return
-        # simulation mode with virtual gears; grade depends on speed, so refresh ~2x per second
+        # simulation mode, holding a torque step or with virtual gears; the grade depends on
+        # speed, so refresh it ~2x per second
         if self._now - self._last_grade_t < 0.5:
             return
         self._last_grade_t = self._now
         v = (self.telemetry.speed_kmh or 0) / 3.6
         mass = self.settings.weight_kg + self.settings.bike_weight_kg
-        self.grade = sim_grade(v, self.gear_factor, mass)
+        nm = self.torque_target
+        if nm is not None:
+            self.grade = torque_grade(v, nm, self.real_ratio, self.settings.wheel_m, mass)
+        else:
+            self.grade = sim_grade(v, self.gear_factor, mass)
         self.source.set_free_ride(self.grade)
