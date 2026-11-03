@@ -121,7 +121,7 @@ def _patch_usb_find() -> None:
 
 
 def _patch_openant() -> None:
-    """Fix two openant channel problems that starve or kill the trainer/HR channels.
+    """Fix three openant channel problems that starve or kill the trainer/HR channels.
 
     - AntPlusDevice opens its channel with extended assignment 0x01 (background
       scanning). Such a channel never tracks the device's timeslot and only catches
@@ -131,7 +131,13 @@ def _patch_openant() -> None:
       reopens it straight away. A close only completes at EVENT_CHANNEL_CLOSED, so a fast
       stick (ANT USB2) rejects the reopen with CHANNEL_IN_WRONG_STATE and the node dies.
       Retry the open briefly.
+    - Channels search in high priority with no timeout (0xFF). A high-priority search holds
+      the radio, so while one channel searches (HR strap not worn, or dropped) the trainer
+      channel's acknowledged sends fail: the Neo 2T received no ERG / sim command at all
+      until the HR channel was removed. Search in low priority only, which uses the time
+      the open channels leave free.
     """
+    from openant.base.message import Message
     from openant.devices.common import AntPlusDevice
     from openant.easy.channel import Channel
 
@@ -157,6 +163,14 @@ def _patch_openant() -> None:
 
     open_._sporterlay = True
     Channel.open = open_
+
+    def set_search_timeout(self, timeout):
+        self._ant.write_message(Message(Message.ID.LOW_PRIORITY_CHANNEL_SEARCH_TIMEOUT, [self.id, timeout]))
+        self.wait_for_response(Message.ID.LOW_PRIORITY_CHANNEL_SEARCH_TIMEOUT)
+        self._ant.set_channel_search_timeout(self.id, 0)  # no high-priority search
+        return self.wait_for_response(Message.ID.SET_CHANNEL_SEARCH_TIMEOUT)
+
+    Channel.set_search_timeout = set_search_timeout
 
 
 class AntSource:
