@@ -32,7 +32,7 @@ NAME_PREFIX = "HEADWIND"
 MANUAL_MODE = bytes([0x04, 0x04])
 
 DEFAULT_PROFILE = {
-    "hr": [[100, 20], [130, 40], [150, 70], [170, 100]],  # bpm -> fan %, linear in between
+    "hr": [[110, 20], [140, 50], [160, 75], [170, 100]],  # bpm -> fan %, linear in between
     "wbal": [[0.0, 0], [0.2, 50], [0.5, 80], [0.7, 100]],  # fraction of W′ used -> fan %
     "min": 20,  # % while riding (also with no heart rate and W′ full)
     "max": 100,
