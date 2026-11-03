@@ -72,7 +72,8 @@ body {
 #left { margin-left: auto; text-align: right; }
 #leftVal { font-size: clamp(34px, 9vmin, 92px); font-weight: 800; line-height: 1; }
 #wLabel { font-size: clamp(16px, 3.6vmin, 30px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#wLabel.msg { color: var(--amber); }
+#wLabel.msg { color: var(--amber); white-space: normal; display: -webkit-box; -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical; font-size: clamp(14px, 3vmin, 24px); }
 #wExtra { color: var(--label); font-size: clamp(12px, 2.4vmin, 18px); min-height: 1.2em; }
 #bar { height: clamp(6px, 1.2vmin, 10px); background: rgba(255,255,255,.12); border-radius: 99px; overflow: hidden; }
 #barFill { height: 100%; width: 0; border-radius: 99px; }

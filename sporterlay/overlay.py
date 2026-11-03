@@ -381,12 +381,8 @@ class Overlay(QWidget):
                 extra.append(f"{self.settings.intensity}% intensity")
             if wo.ftp_override:
                 extra.append(f"FTP {wo.ftp_override} (workout)")
-            msg = seg.text_at(into)
-            if msg:  # workout text message takes the headline, Zwift-style
-                extra.insert(0, name)
-                name = msg
-            self.text(p, QRectF(mid.x(), mid.y() + 4, mid.width(), 24), name, 18,
-                      QColor(255, 205, 60) if msg else WHITE, True,
+            # workout text messages have their own window below the HUD (messages.py)
+            self.text(p, QRectF(mid.x(), mid.y() + 4, mid.width(), 24), name, 18, WHITE, True,
                       Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             self.text(p, QRectF(mid.x(), mid.y() + 26, mid.width(), 20),
                       "   ".join(extra) or f"{idx + 1} / {len(wo.segments)}", 13, LABEL, True,

@@ -26,9 +26,14 @@ class Segment:
     torque: Optional[float] = None  # Nm at the cranks, held in simulation mode (see apply_torques)
 
     def text_at(self, t: float) -> Optional[str]:
+        m = self.message_at(t)
+        return m[0] if m else None
+
+    def message_at(self, t: float) -> Optional[tuple[str, float, float]]:
+        """(message, seconds shown so far, duration) of the text showing t seconds in."""
         for off, msg, dur in self.texts:
             if off <= t < off + dur:
-                return msg
+                return msg, t - off, dur
         return None
 
     def power_at(self, t: float) -> Optional[float]:

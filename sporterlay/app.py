@@ -25,6 +25,7 @@ from .fan import FanProfile, HeadwindController
 from .ftptest import RampTest, is_ramp_test, ramp_workout
 from .intervals import IntervalsClient
 from .media import AutoPause, MediaSessions, NowPlaying
+from .messages import MessageBox
 from .overlay import Overlay, _family, fmt_time
 from .ride import Ride
 from .settings import Settings, config_dir
@@ -198,6 +199,7 @@ class App:
         self.ramp = None  # RampTest while a ramp test workout is loaded
         self._ramp_fit = None  # .fit name of the ramp test waiting for its eFTP
         self.overlay = Overlay(self.ride, self.status_text, self.now_playing_text, self.card)
+        self.messages = MessageBox(self.ride, self.overlay)
         self.beeper = Beeper(config_dir() / "sounds")
         self.media = MediaSessions()
         self.autopause = AutoPause()
@@ -302,6 +304,7 @@ class App:
         self._wbal_warning()
         self._apply_hud()
         self.overlay.refresh()
+        self.messages.refresh()
         self.button_map.refresh()
         self._web()
 
