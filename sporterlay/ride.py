@@ -11,7 +11,7 @@ from typing import Optional
 
 from .cues import cues_between
 from .settings import Settings
-from .shifting import gear_ratios, neutral_gear, sim_grade
+from .shifting import flat_speed, gear_ratios, neutral_gear, sim_grade
 from .sources import Telemetry
 from .wbal import WPrimeBalance, predict
 from .workout import Workout, WorkoutPlayer
@@ -222,11 +222,16 @@ class Ride:
 
     @property
     def speed_kmh(self) -> Optional[float]:
-        """Speed to show: virtual speed in the current gear when shifting is in effect."""
+        """Speed to show: virtual speed in the current gear when shifting is in effect. With
+        ERG (or isokinetic) the flywheel speed only follows cadence in the real gear (90 rpm in
+        52x14 is 42 km/h at any power), so it's the flat-road speed of the smoothed power then."""
         v = self.telemetry.speed_kmh
         if v is None:
             return None
-        return v if self.erg_active or self.iso or self.torque_target is not None else v * self.gear_factor
+        if self.erg_active or self.iso or self.torque_target is not None:
+            mass = self.settings.weight_kg + self.settings.bike_weight_kg
+            return flat_speed(self.power_display or 0, mass) * 3.6
+        return v * self.gear_factor
 
     # ---- derived values -----------------------------------------------------
     @property

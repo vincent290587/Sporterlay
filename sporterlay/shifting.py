@@ -39,6 +39,20 @@ def neutral_gear(ratios: list[float], real_ratio: float) -> int:
     return 1 + min(range(len(ratios)), key=lambda i: abs(ratios[i] - real_ratio))
 
 
+def flat_speed(power_w: float, mass_kg: float) -> float:
+    """Speed in m/s that power_w holds on a flat road: P = (Crr m g + K v^2) v, the model
+    the gears use, solved with Cardano's formula (the cubic has one real root)."""
+    if power_w <= 0:
+        return 0.0
+    p, q = CRR * mass_kg * G_ACC / AERO_K, -power_w / AERO_K
+    d = math.sqrt(q * q / 4 + p ** 3 / 27)
+    return _cbrt(-q / 2 + d) + _cbrt(-q / 2 - d)
+
+
+def _cbrt(x: float) -> float:
+    return math.copysign(abs(x) ** (1 / 3), x)
+
+
 def sim_grade(speed_ms: float, k: float, mass_kg: float) -> float:
     """Grade in % to send to the trainer for gear factor k at trainer speed v."""
     v = max(speed_ms, 0.0)
