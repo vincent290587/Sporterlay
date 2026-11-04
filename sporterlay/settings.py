@@ -30,7 +30,7 @@ class Settings:
     erg: bool = True
     # ERG soft start: only engage once the rider is spinning, ramp the target in, and let go
     # again when cadence drops (otherwise starting from standstill means huge torque)
-    erg_engage_rpm: int = 60
+    erg_engage_rpm: int = 50
     erg_engage_s: float = 3.0
     erg_release_rpm: int = 40
     erg_release_s: float = 2.0

@@ -10,7 +10,7 @@ virtual gears when you're not following a workout.
   the whole workout profile with your actual power drawn over it, and what's next
 - Click-through: the overlay never steals clicks from the video
 - Workout clock only runs while you pedal; ERG is released when the workout is paused, done, or in a free-ride step
-- ERG soft start: ERG only engages once you've spun at ≥ 60 rpm for 3 s (until then the trainer rides like a flat
+- ERG soft start: ERG only engages once you've spun at ≥ 50 rpm for 3 s (until then the trainer rides like a flat
   road in your current gear), ramps from your power to the target over 5 s, and lets go again if cadence stays
   under 40 rpm for 2 s, so starting or restarting never means grinding against the full target.
   For steps with a cadence target the thresholds follow it (e.g. 40 / 35 rpm for a 50 rpm strength step)
