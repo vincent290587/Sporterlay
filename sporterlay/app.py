@@ -796,8 +796,9 @@ class App:
             return
         if self.ride.torque_target is not None:  # torque step: the paddles change the torque
             self.ride.torque_offset += 2 if delta > 0 else -2
-            self.ride.shift(0)  # resend the grade now
-            self.flash(f"Torque {self.ride.torque_target:.0f} Nm")
+            self.ride.shift(0)  # apply now, not on the next tick
+            rpm = self.ride.torque_cadence()
+            self.flash(f"Torque {self.ride.torque_target:.0f} Nm" + (f" ({rpm} rpm for the target)" if rpm else ""))
             return
         self.ride.shift(delta)
         if abs(delta) > 1:  # single shifts show in the GEAR cell; flag the jumps

@@ -45,15 +45,3 @@ def sim_grade(speed_ms: float, k: float, mass_kg: float) -> float:
     g = CRR * (k - 1) + AERO_K * v * v * (k**3 - 1) / (mass_kg * G_ACC)
     return max(-10.0, min(20.0, g * 100))
 
-
-def torque_grade(speed_ms: float, torque_nm: float, real_ratio: float, wheel_m: float, mass_kg: float) -> float:
-    """Grade in % at which turning the cranks takes torque_nm, whatever the cadence.
-
-    The wheel force for a crank torque T in the real gear is T * 2 pi / (wheel_m * ratio);
-    the trainer's force at grade G is m g (G + Crr) + K v^2, so G follows directly. Only the
-    small air-drag term depends on speed, which is why the grade is refreshed while riding.
-    """
-    v = max(speed_ms, 0.0)
-    force = torque_nm * 2 * math.pi / (wheel_m * max(real_ratio, 0.1))
-    g = (force - AERO_K * v * v) / (mass_kg * G_ACC) - CRR
-    return max(-10.0, min(20.0, g * 100))

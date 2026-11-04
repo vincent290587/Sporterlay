@@ -5,12 +5,13 @@ Pure Python, no Qt, so it can be tested on its own.
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from typing import Optional
 
 from .cues import cues_between
 from .settings import Settings
-from .shifting import gear_ratios, neutral_gear, sim_grade, torque_grade
+from .shifting import gear_ratios, neutral_gear, sim_grade
 from .sources import Telemetry
 from .wbal import WPrimeBalance, predict
 from .workout import Workout, WorkoutPlayer
@@ -36,6 +37,8 @@ class Ride:
         self._last_grade_t = -1.0
         self.iso = False  # Tacx Neo isokinetic mode (opt-out from ERG / gears; not persisted)
         self.torque_offset = 0.0  # Nm added to the workout's torque steps (Click paddles)
+        self._cadence: Optional[float] = None  # smoothed cadence for the torque steps' ERG target
+        self._torque_w: tuple = (None, -1.0, 0)  # (Nm, time, W): torque ERG target, refreshed 1x/s
         # ERG soft start state
         self.erg_engaged = False
         self._spin_since: Optional[float] = None  # cadence above engage threshold since
@@ -106,19 +109,27 @@ class Ride:
 
     @property
     def erg_wanted(self) -> bool:
-        """The workout calls for ERG right now (ERG on, workout running, step has a target)."""
+        """The workout calls for ERG right now (ERG on, workout running, step has a power or
+        torque target)."""
         p = self.player
         return (self.settings.erg and not self.iso and p is not None and not p.paused and not p.finished
-                and p.current()[1].torque is None and p.target_fraction() is not None)
+                and (p.current()[1].torque is not None or p.target_fraction() is not None))
 
     @property
     def torque_target(self) -> Optional[float]:
-        """Crank torque (Nm) the current workout step holds, with the rider's offset."""
+        """Crank torque (Nm) the current workout step holds, with the rider's offset. Held with
+        ERG, so with ERG off the step is ridden on the gears like any other."""
         p = self.player
-        if self.iso or p is None or p.paused or p.finished:
+        if not self.settings.erg or self.iso or p is None or p.paused or p.finished:
             return None
         nm = p.current()[1].torque
         return None if nm is None else max(5.0, nm + self.torque_offset)
+
+    def torque_cadence(self) -> Optional[int]:
+        """Cadence at which the torque step's torque gives its power target (e.g. 243 W at
+        40 Nm = 58 rpm), or None."""
+        nm, w = self.torque_target, self.target_watts()
+        return round(w / (nm * 2 * math.pi / 60)) if nm and w else None
 
     @property
     def erg_active(self) -> bool:
@@ -145,7 +156,7 @@ class Ride:
         s = self.settings
         engage, release = s.erg_engage_rpm, s.erg_release_rpm
         if self.player and not self.player.finished:
-            cad = self.player.current()[1].cadence
+            cad = self.player.current()[1].cadence or self.torque_cadence()
             if cad:
                 engage, release = min(engage, cad - 10), min(release, cad - 15)
         return engage, release
@@ -177,7 +188,7 @@ class Ride:
 
     def erg_target(self) -> Optional[int]:
         """Workout target, ramped in over erg_ramp_s right after ERG engages."""
-        target = self.target_watts()
+        target = self._erg_goal()
         if target is None:
             return None
         ramp = self.settings.erg_ramp_s
@@ -185,6 +196,22 @@ class Ride:
         if f >= 1.0:
             return target
         return round(self._ramp_from + (target - self._ramp_from) * max(f, 0.0))
+
+    def _erg_goal(self) -> Optional[int]:
+        """Power ERG should hold: the step's target, or for a torque step torque x cadence.
+
+        Holding T * omega makes the resistance the same at any cadence, which a grade can't do
+        on the Neo (on 2026-11-04 it gave ~1 Nm more per rpm slower). The target only follows
+        cadence 1x per second, so ERG isn't sent a new value every tick.
+        """
+        nm = self.torque_target
+        if nm is None or self._cadence is None:
+            return self.target_watts()
+        last_nm, t, w = self._torque_w
+        if nm != last_nm or self._now - t >= 1.0:
+            w = round(nm * self._cadence * 2 * math.pi / 60)
+            self._torque_w = (nm, self._now, w)
+        return w
 
     @property
     def speed_kmh(self) -> Optional[float]:
@@ -259,6 +286,11 @@ class Ride:
 
         # raw power: W′ reacts within seconds, smoothing would hide short efforts
         self.wbal.update(t.power or 0, self.settings.ftp, self.settings.w_prime_j, dt)
+        if t.cadence is None:
+            self._cadence = None
+        else:  # ~1.5 s smoothing: follows a change of cadence, not each pedal stroke
+            a = min(1.0, dt / 1.5)
+            self._cadence = t.cadence if self._cadence is None else self._cadence + a * (t.cadence - self._cadence)
 
         self.cues = []
         self._update_erg_engagement()
@@ -286,16 +318,11 @@ class Ride:
             self.source.set_target_power(self.erg_target())
             self._last_grade_t = -1.0  # resend sim grade at once when ERG lets go
             return
-        # simulation mode, holding a torque step or with virtual gears; the grade depends on
-        # speed, so refresh it ~2x per second
+        # simulation mode with virtual gears; the grade depends on speed, so refresh it ~2x per second
         if self._now - self._last_grade_t < 0.5:
             return
         self._last_grade_t = self._now
         v = (self.telemetry.speed_kmh or 0) / 3.6
         mass = self.settings.weight_kg + self.settings.bike_weight_kg
-        nm = self.torque_target
-        if nm is not None:
-            self.grade = torque_grade(v, nm, self.real_ratio, self.settings.wheel_m, mass)
-        else:
-            self.grade = sim_grade(v, self.gear_factor, mass)
+        self.grade = sim_grade(v, self.gear_factor, mass)
         self.source.set_free_ride(self.grade)

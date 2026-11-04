@@ -240,6 +240,9 @@ def ride_state(ride, status: Optional[str], music: Optional[str], card=None, cue
             extra = []
             if seg.cadence:
                 extra.append(f"@ {seg.cadence} rpm")
+            if ride.torque_target is not None:
+                rpm = ride.torque_cadence()
+                extra.append(f"{ride.torque_target:.0f} Nm" + (f" @ {rpm} rpm" if rpm else ""))
             if seg.is_ramp and frac is not None:
                 extra.append(f"{ride.watts_for(seg.start)} → {ride.watts_for(seg.end)} W")
             if seg.target_range:
