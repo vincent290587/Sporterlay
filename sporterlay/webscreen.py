@@ -207,6 +207,7 @@ def ride_state(ride, status: Optional[str], music: Optional[str], card=None, cue
         "wkg": round(power / s.weight_kg, 1) if power is not None and s.weight_kg else None,
         "hr": t.heart_rate,
         "cadence": t.cadence,
+        "cadence_target": ride.cadence_target(),
         "speed": None if ride.speed_kmh is None else round(ride.speed_kmh, 1),
         "distance": round(ride.distance_km, 2),
         "time": round(ride.ride_time),

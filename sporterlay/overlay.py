@@ -270,13 +270,18 @@ class Overlay(QWidget):
         dash = "--"
 
         v = 25  # value size for the small cells
+        # a step's target cadence goes in the cell's label; the value turns green within 5 rpm
+        cad_t = ride.cadence_target()
+        cad_col = WHITE if cad_t is None or t.cadence is None else (
+            QColor(80, 195, 90) if abs(t.cadence - cad_t) <= 5 else QColor(255, 205, 60))
         cells = [  # (weight, label, value, unit, size, colour)
             (1.5, f"POWER{'' if self.settings.power_avg_s <= 1 else f' ({self.settings.power_avg_s}s)'}",
              dash if power is None else str(power), "W", 46, WHITE),
             (0.8, "W/KG", dash if power is None else f"{power / self.settings.weight_kg:.1f}", "", v, WHITE),
             (1.0, "HEART RATE", dash if t.heart_rate is None else str(t.heart_rate), "bpm", v,
              QColor(255, 95, 95) if t.heart_rate else WHITE),
-            (0.95, "CADENCE", dash if t.cadence is None else str(t.cadence), "rpm", v, WHITE),
+            (0.95, "CADENCE" if cad_t is None else f"CADENCE → {cad_t}",
+             dash if t.cadence is None else str(t.cadence), "rpm", v, cad_col),
             (1.15, "SPEED", dash if ride.speed_kmh is None else f"{ride.speed_kmh:.1f}", "km/h", v, WHITE),
             (1.05, "DISTANCE", f"{ride.distance_km:.1f}", "km", v, WHITE),
             (1.05, "TIME", fmt_time(ride.ride_time), "", v, WHITE),

@@ -125,6 +125,13 @@ class Ride:
         nm = p.current()[1].torque
         return None if nm is None else max(5.0, nm + self.torque_offset)
 
+    def cadence_target(self) -> Optional[int]:
+        """Cadence the current step asks for: its own target, or the one a torque step implies."""
+        p = self.player
+        if p is None or p.finished:
+            return None
+        return p.current()[1].cadence or self.torque_cadence()
+
     def torque_cadence(self) -> Optional[int]:
         """Cadence at which the torque step's torque gives its power target (e.g. 243 W at
         40 Nm = 58 rpm), or None."""

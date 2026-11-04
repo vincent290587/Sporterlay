@@ -229,6 +229,11 @@ function render(s) {
   } else { $("battFill").style.height = "0"; $("wbalPct").textContent = "--"; }
   setV("hr", `${val(s.hr)}<span class="unit">bpm</span>`);
   setV("cad", `${val(s.cadence)}<span class="unit">rpm</span>`);
+  // the step's target cadence in the label, the value green within 5 rpm (as on the HUD)
+  const ct = s.cadence_target;
+  $("cad").querySelector(".label").textContent = ct == null ? "Cadence" : `Cadence → ${ct}`;
+  $("cad").querySelector(".v").style.color = ct == null || s.cadence == null ? ""
+    : Math.abs(s.cadence - ct) <= 5 ? "var(--green)" : "var(--amber)";
   setV("spd", `${s.speed == null ? "--" : s.speed.toFixed(1)}<span class="unit">km/h</span>`);
   setV("time", fmt(s.time));
   setV("dist", `${s.distance.toFixed(1)}<span class="unit">km</span>`);
