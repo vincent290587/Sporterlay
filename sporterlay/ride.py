@@ -193,6 +193,8 @@ class Ride:
                 self.erg_engaged = False
                 self._spin_since = None
 
+    TORQUE_ENTRY_S = 10.0  # torque steps start capped at the step's watts (see _erg_goal)
+
     def erg_target(self) -> Optional[int]:
         """Workout target, ramped in over erg_ramp_s right after ERG engages."""
         target = self._erg_goal()
@@ -210,6 +212,10 @@ class Ride:
         Holding T * omega makes the resistance the same at any cadence, which a grade can't do
         on the Neo (on 2026-11-04 it gave ~1 Nm more per rpm slower). The target only follows
         cadence 1x per second, so ERG isn't sent a new value every tick.
+
+        For the first TORQUE_ENTRY_S of the step it's capped at the step's power target: coming
+        in from a recovery at ~85 rpm, 45 Nm x 85 rpm asked for ~400 W and the rider got a
+        ~350 W spike for 3-5 s while the cadence came down (2026-11-07).
         """
         nm = self.torque_target
         if nm is None or self._cadence is None:
@@ -218,6 +224,9 @@ class Ride:
         if nm != last_nm or self._now - t >= 1.0:
             w = round(nm * self._cadence * 2 * math.pi / 60)
             self._torque_w = (nm, self._now, w)
+        cap = self.target_watts()
+        if cap and self.player.current()[2] < self.TORQUE_ENTRY_S:
+            return min(w, cap)
         return w
 
     @property
