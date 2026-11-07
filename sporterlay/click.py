@@ -10,8 +10,8 @@ Protocol (reverse-engineered by the community, see README credits):
   bit means pressed: 0x1000 shift up (right pod), 0x100 shift down (left pod); the
   right pod also has z/y/a/b (0x80/0x40/0x10/0x20).
   Verified on hardware: the LEFT pod's connection carries both pods' buttons, the
-  RIGHT pod's connection only its own. So we connect to every pod that's awake and
-  ignore the right connection while the left one is up (else right presses double).
+  RIGHT pod's connection only its own. So we connect to every pod that's awake, take each
+  press from whichever connection reports it first and drop the copy from the other one.
   A v2 that was never paired with the Zwift app answers with 0xFF (locked) and stays silent.
 - v1: write b"RideOn"; frames start with 0x37, field 1 = plus, field 2 = minus (0 = pressed).
 """
@@ -104,6 +104,8 @@ class ClickController:
         self._sessions: dict[str, Optional[int]] = {}  # address -> device type, while connected
         self._busy: set[str] = set()  # addresses being connected or connected
         self._pressed: dict[str, set[str]] = {}
+        self._last_press: dict[str, tuple[str, float]] = {}  # button -> (address, time) of its last press
+        self._frames_seen: set[str] = set()  # addresses that sent a frame since connecting
         self._tasks: set[asyncio.Task] = set()
         self._stop = threading.Event()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -126,9 +128,6 @@ class ClickController:
             return
         names = sorted({_side(t) for t in self._sessions.values()})
         self.status = "Click " + " + ".join(names) + " connected"
-
-    def _left_connected(self) -> bool:
-        return TYPE_V2_LEFT in self._sessions.values()
 
     # ---- background thread ----------------------------------------------------
     def _thread(self) -> None:
@@ -218,6 +217,7 @@ class ClickController:
         finally:
             self._sessions.pop(addr, None)
             self._pressed.pop(addr, None)
+            self._frames_seen.discard(addr)
             self._update_status()
             if not self._stop.is_set():
                 await asyncio.sleep(2)  # don't grab the lingering advertisement right away
@@ -235,7 +235,8 @@ class ClickController:
             self._loop.call_soon_threadsafe(disconnected.set)
 
         def on_indicate(_, data: bytearray):
-            if data[:1] == b"\xff":
+            if data[:1] == b"\xff" and not locked.is_set():
+                log.warning("Zwift Click %s is locked: pair it once with the Zwift app", _side(dev_type))
                 locked.set()
 
         client = BleakClient(device, disconnected_callback=on_disconnect, timeout=timeout)
@@ -280,15 +281,27 @@ class ClickController:
                 pass
         log.info("Zwift Click %s disconnected", _side(dev_type))
 
+    DUP_S = 0.4  # the same press seen on the other pod's connection within this is a duplicate
+
     def _on_frame(self, addr: str, dev_type, frame: bytes) -> None:
+        if addr not in self._frames_seen:
+            self._frames_seen.add(addr)
+            log.info("Click %s: first frame %s", _side(dev_type), frame.hex())
         now = pressed_buttons(frame)
         if now is None:
             return
-        if dev_type == TYPE_V2_RIGHT and self._left_connected():
-            return  # the left pod's connection already carries these presses
         new = now - self._pressed.get(addr, set())
         self._pressed[addr] = now
+        t = time.monotonic()
         for b in sorted(new):  # fire on press edges only
+            # Right-pod presses usually arrive on both connections (the left one carries both
+            # pods). Taking whichever comes first, instead of ignoring the right connection,
+            # keeps them working if the left connection stops carrying them.
+            prev_addr, prev_t = self._last_press.get(b, (None, -1.0))
+            self._last_press[b] = (addr, t)
+            if prev_addr not in (None, addr) and t - prev_t < self.DUP_S:
+                continue
+            log.info("Click press %s (%s connection)", b, _side(dev_type))
             try:
                 self.on_button(b)
             except Exception:
