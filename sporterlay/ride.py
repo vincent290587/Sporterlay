@@ -126,11 +126,12 @@ class Ride:
         return None if nm is None else max(5.0, nm + self.torque_offset)
 
     def cadence_target(self) -> Optional[int]:
-        """Cadence the current step asks for: its own target, or the one a torque step implies."""
+        """Cadence the current step asks for: the one a torque step implies (the torque wins over
+        the step's own cadence, e.g. "85% 65rpm 45Nm" is 49 rpm), or its own target."""
         p = self.player
         if p is None or p.finished:
             return None
-        return p.current()[1].cadence or self.torque_cadence()
+        return self.torque_cadence() or p.current()[1].cadence
 
     def torque_cadence(self) -> Optional[int]:
         """Cadence at which the torque step's torque gives its power target (e.g. 243 W at
@@ -163,7 +164,7 @@ class Ride:
         s = self.settings
         engage, release = s.erg_engage_rpm, s.erg_release_rpm
         if self.player and not self.player.finished:
-            cad = self.player.current()[1].cadence or self.torque_cadence()
+            cad = self.torque_cadence() or self.player.current()[1].cadence
             if cad:
                 engage, release = min(engage, cad - 10), min(release, cad - 15)
         return engage, release
@@ -193,8 +194,7 @@ class Ride:
                 self.erg_engaged = False
                 self._spin_since = None
 
-    TORQUE_ENTRY_S = 10.0  # torque steps start held near the step's watts (see _erg_goal)
-    TORQUE_ENTRY_W = 30  # ... within this many watts of it
+    TORQUE_BAND_W = 30  # torque steps stay within this many watts of the step's watts (see _erg_goal)
 
     def erg_target(self) -> Optional[int]:
         """Workout target, ramped in over erg_ramp_s right after ERG engages."""
@@ -214,9 +214,10 @@ class Ride:
         on the Neo (on 2026-11-04 it gave ~1 Nm more per rpm slower). The target only follows
         cadence 1x per second, so ERG isn't sent a new value every tick.
 
-        For the first TORQUE_ENTRY_S of the step it's kept within TORQUE_ENTRY_W of the step's
-        power target: coming in from a recovery at ~85 rpm, 45 Nm x 85 rpm asked for ~400 W and
-        the rider got a ~350 W spike for 3-5 s while the cadence came down (2026-11-07).
+        It's kept within TORQUE_BAND_W of the step's power target for the whole step: coming in
+        from a recovery at ~85 rpm, 45 Nm x 85 rpm asked for ~400 W (2026-11-07), and a band that
+        lifted after 10 s did the same when the cadence wasn't down yet (2026-11-09). It also
+        bounds a step whose torque and watts don't agree at the cadence ridden.
         """
         nm = self.torque_target
         if nm is None or self._cadence is None:
@@ -226,8 +227,8 @@ class Ride:
             w = round(nm * self._cadence * 2 * math.pi / 60)
             self._torque_w = (nm, self._now, w)
         step_w = self.target_watts()
-        if step_w and self.player.current()[2] < self.TORQUE_ENTRY_S:
-            return max(step_w - self.TORQUE_ENTRY_W, min(w, step_w + self.TORQUE_ENTRY_W))
+        if step_w:
+            return max(step_w - self.TORQUE_BAND_W, min(w, step_w + self.TORQUE_BAND_W))
         return w
 
     @property
