@@ -194,6 +194,7 @@ class Ride:
                 self.erg_engaged = False
                 self._spin_since = None
 
+    ERG_WAIT_W = 50  # ERG target while waiting for the engage cadence (see _control_trainer)
     TORQUE_BAND_W = 30  # torque steps stay within this many watts of the step's watts (see _erg_goal)
 
     def erg_target(self) -> Optional[int]:
@@ -340,6 +341,14 @@ class Ride:
         if self.erg_active:
             self.source.set_target_power(self.erg_target())
             self._last_grade_t = -1.0  # resend sim grade at once when ERG lets go
+            return
+        if self.erg_waiting:
+            # Spinning up to the engage cadence: a light ERG target, not the gears. In simulation
+            # mode the Neo makes the rider accelerate their whole mass in the bike's real gear
+            # (2026-11-09: ~45 Nm / 250 W for 15 s to reach 65 rpm in 52x14); in ERG it has
+            # about a tenth of that inertia.
+            self.source.set_target_power(min(self.ERG_WAIT_W, self._erg_goal() or self.ERG_WAIT_W))
+            self._last_grade_t = -1.0
             return
         # simulation mode with virtual gears; the grade depends on speed, so refresh it ~2x per second
         if self._now - self._last_grade_t < 0.5:
