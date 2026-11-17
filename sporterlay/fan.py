@@ -30,6 +30,8 @@ log = logging.getLogger(__name__)
 CHAR = "a026e038-0a7d-4ab3-97fa-f1500f9feb8b"
 NAME_PREFIX = "HEADWIND"
 MANUAL_MODE = bytes([0x04, 0x04])
+STATUS_TIMEOUT_S = 6.0  # no status for this long = the link is dead, even if Windows doesn't say so
+RESEND_S = 3.0  # re-send mode/speed when the fan's status disagrees for this long
 
 DEFAULT_PROFILE = {
     "hr": [[110, 20], [140, 50], [160, 75], [170, 100]],  # bpm -> fan %, linear in between
@@ -153,6 +155,8 @@ class HeadwindController:
         self.status = "Fan: searching"
         self.connected = False
         self.reported: Optional[int] = None  # speed the fan says it runs at
+        self.mode: Optional[int] = None  # mode from the fan's status (4 = manual)
+        self._status_t = 0.0  # loop time of the last status
         self._want = 0
         self._wake = None  # asyncio.Event, created on the loop
         self._stop = threading.Event()
@@ -206,11 +210,11 @@ class HeadwindController:
                 await self._session(device)
                 failures = 0
             except Exception as e:
-                failures += 1
+                failures = 0 if self.connected else failures + 1  # only quiet repeated connect failures
                 if failures <= 2:
                     log.warning("Fan: %s", str(e) or e.__class__.__name__)
             finally:
-                self.connected, self.reported = False, None
+                self.connected, self.reported, self.mode = False, None, None
             if not self._stop.is_set():
                 self.status = "Fan: reconnecting"
                 await self._sleep(2)
@@ -254,19 +258,35 @@ class HeadwindController:
                 self.address = device.address
                 if self.on_address:
                     self.on_address(device.address)
+            self._status_t = self._loop.time()
             await client.start_notify(CHAR, self._on_notify)
             await client.write_gatt_char(CHAR, MANUAL_MODE, response=False)
             await asyncio.sleep(0.3)
-            sent = None
+            sent, sent_t = None, 0.0
             self.connected = True
             self.status = "Fan connected"
             log.info("Fan connected: %s %s", device.name, device.address)
             while not lost.is_set():
+                now = self._loop.time()
+                # The fan sends a status every second. On the 11-17 ride it went quiet mid-ride
+                # (probably a reset) and Windows never reported a disconnect, so the speed writes
+                # went nowhere: reconnect, which also re-subscribes and re-enters manual mode.
+                if now - self._status_t > STATUS_TIMEOUT_S:
+                    raise ConnectionError(f"no status for {now - self._status_t:.0f} s, reconnecting")
                 want = self._want
+                if now - sent_t >= RESEND_S:
+                    if self.mode is not None and self.mode != 0x04:  # reset, the button or the Wahoo app
+                        log.warning("Fan: in mode %d, back to manual", self.mode)
+                        await client.write_gatt_char(CHAR, MANUAL_MODE, response=False)
+                        await asyncio.sleep(0.3)
+                        sent = None
+                    elif self.reported is not None and self.reported != want and sent == want:
+                        log.debug("Fan: runs at %d %% instead of %d %%, sending again", self.reported, want)
+                        sent = None
                 if want != sent:
                     await client.write_gatt_char(CHAR, bytes([0x02, want]), response=False)
                     log.debug("Fan: speed %d %%", want)
-                    sent = want
+                    sent, sent_t = want, now
                 if self._stop.is_set():
                     await asyncio.sleep(0.3)  # let the "off" go out before disconnecting
                     return
@@ -275,9 +295,8 @@ class HeadwindController:
 
     def _on_notify(self, _handle, data: bytearray) -> None:
         if len(data) >= 4 and data[0] == 0xFD:
-            self.reported = data[2]
-            if data[3] != 0x04 and self.connected:  # someone (the button, the Wahoo app) changed mode
-                log.info("Fan left manual mode (mode %d)", data[3])
+            self._status_t = self._loop.time()
+            self.reported, self.mode = data[2], data[3]
 
     async def _release_stale(self) -> None:
         """See ClickController._release_stale: only Linux/BlueZ keeps a dead process's link."""
