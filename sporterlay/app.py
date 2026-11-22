@@ -58,8 +58,8 @@ ACTIONS = {
     "back": ("Previous / restart interval", "Back", "back"),
     "erg": ("ERG on / off", "ERG on/off", "toggle_erg"),
     "iso": ("Isokinetic on / off", "Isokinetic", "toggle_iso"),
-    "int_up": ("Intensity +5 %", "Intensity +5%", "bump_intensity", +5),
-    "int_down": ("Intensity −5 %", "Intensity −5%", "bump_intensity", -5),
+    "int_up": ("Workout targets +10 W", "Target +10 W", "bump_target", +10),
+    "int_down": ("Workout targets −10 W", "Target −10 W", "bump_target", -10),
     "overlay": ("Show / hide overlay", "Overlay", "toggle_visible"),
     "map": ("Show / hide this button map", "Button map", "toggle_button_map"),
     "card": ("Show / hide ride summary", "Ride summary", "toggle_card"),
@@ -265,8 +265,8 @@ class App:
                 ord("E"): self.toggle_erg,
                 ord("L"): self.toggle_lock,
                 ord("H"): self.toggle_visible,
-                VK_UP: lambda: self.bump_intensity(+5),
-                VK_DOWN: lambda: self.bump_intensity(-5),
+                VK_UP: lambda: self.bump_target(+10),
+                VK_DOWN: lambda: self.bump_target(-10),
                 ord("I"): self.toggle_iso,
                 ord("M"): self.toggle_button_map,
                 0x27: lambda: self.shift(+1),  # right arrow: harder gear
@@ -1005,10 +1005,10 @@ class App:
         self.settings.save()
         self.flash("ERG on" if self.settings.erg else "ERG off: gears active")
 
-    def bump_intensity(self, d):
-        self.settings.intensity = max(50, min(150, self.settings.intensity + d))
+    def bump_target(self, d):
+        self.settings.target_offset_w = max(-200, min(200, self.settings.target_offset_w + d))
         self.settings.save()
-        self.flash(f"Intensity {self.settings.intensity} %")
+        self.flash(f"Workout targets {self.settings.target_offset_w:+d} W")
 
     def toggle_lock(self):
         self.overlay.set_locked(not self.settings.locked)
@@ -1157,9 +1157,12 @@ class App:
                                       checked=key == cur, menu=sub))
         bm.addSeparator()
         act("Reset to defaults", self.reset_click_map, enabled=bool(s.click_map), menu=bm)
-        im = m.addMenu(f"Intensity: {s.intensity}%   (Ctrl+Alt+↑/↓)")
+        im = m.addMenu(f"Intensity: {s.intensity}% {s.target_offset_w:+d} W")
         for v in (70, 80, 90, 95, 100, 105, 110, 120):
             act(f"{v}%", lambda v=v: self._set("intensity", v), checked=s.intensity == v, menu=im)
+        im.addSeparator()
+        act(f"Reset target offset ({s.target_offset_w:+d} W, Ctrl+Alt+↑/↓)", lambda: self._set("target_offset_w", 0),
+            enabled=s.target_offset_w != 0, menu=im)
         m.addSeparator()
         act(f"FTP: {s.ftp} W…", self.set_ftp)
         act(f"Weight: {s.weight_kg:g} kg…", self.set_weight)

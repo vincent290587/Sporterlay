@@ -192,7 +192,7 @@ def workout_key(ride) -> object:
         return None
     s = ride.settings
     # a reset empties the trace: resend then (and once more when it starts again)
-    return (id(p.workout), ride.workout_ftp, s.intensity, s.ftp, s.w_prime_j, s.show_wbal, bool(ride.trace))
+    return (id(p.workout), ride.workout_ftp, s.intensity, s.target_offset_w, s.ftp, s.w_prime_j, s.show_wbal, bool(ride.trace))
 
 
 def ride_state(ride, status: Optional[str], music: Optional[str], card=None, cue: tuple = (0, None)) -> dict:
@@ -250,6 +250,8 @@ def ride_state(ride, status: Optional[str], music: Optional[str], card=None, cue
                 extra.append(f"{ride.watts_for(seg.target_range[0])}–{ride.watts_for(seg.target_range[1])} W")
             if s.intensity != 100:
                 extra.append(f"{s.intensity}% intensity")
+            if s.target_offset_w:
+                extra.append(f"{s.target_offset_w:+d} W")
             nxt = p.next_segment()
             next_txt = None
             if nxt is not None:

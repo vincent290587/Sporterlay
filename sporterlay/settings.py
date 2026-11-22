@@ -36,6 +36,7 @@ class Settings:
     erg_release_s: float = 2.0
     erg_ramp_s: float = 5.0
     intensity: int = 100  # % applied to workout targets
+    target_offset_w: int = 0  # W added to every workout target after intensity (Click Y/Z, Ctrl+Alt+↑/↓)
     scale: float = 1.0
     x: Optional[int] = None  # None = centred at top of primary screen
     y: Optional[int] = None

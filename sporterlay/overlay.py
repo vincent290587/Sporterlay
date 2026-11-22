@@ -387,6 +387,8 @@ class Overlay(QWidget):
                 extra.append(f"{ride.watts_for(seg.target_range[0])}–{ride.watts_for(seg.target_range[1])} W")
             if self.settings.intensity != 100:
                 extra.append(f"{self.settings.intensity}% intensity")
+            if self.settings.target_offset_w:
+                extra.append(f"{self.settings.target_offset_w:+d} W")
             if wo.ftp_override:
                 extra.append(f"FTP {wo.ftp_override} (workout)")
             # workout text messages have their own window below the HUD (messages.py)

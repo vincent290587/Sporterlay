@@ -74,7 +74,7 @@ Workouts with a fixed FTP (`ftpOverride` in the export) use that FTP, as in Zwif
   | Shift | Shift easier | Shift | Shift harder |
   | ↑ / ↓ | Fan +10 % / −10 % (KICKR Headwind) | A | Pause / resume workout |
   | ← | Restart interval (twice quickly: previous) | B | Next interval |
-  | → | ERG on / off | Y / Z | Intensity +5 % / −5 % |
+  | → | ERG on / off | Y / Z | Workout targets +10 W / −10 W |
 
 - **Rebind any button**, shift buttons included: tray → *Zwift Click buttons* → the button → an action
   (*Reset to defaults* undoes it all).
@@ -98,7 +98,7 @@ Browser fullscreen (`F` on YouTube) is a borderless window on Windows, and the o
 | Ctrl+Alt+N | Next interval |
 | Ctrl+Alt+B | Restart interval (press twice quickly: previous) |
 | Ctrl+Alt+E | ERG on/off |
-| Ctrl+Alt+↑ / ↓ | Workout intensity ±5 % |
+| Ctrl+Alt+↑ / ↓ | Workout targets ±10 W (reset in tray → Intensity) |
 | Ctrl+Alt+→ / ← | Shift harder / easier |
 | Ctrl+Alt+I | Isokinetic mode on/off (Tacx Neo) |
 | Ctrl+Alt+M | Show / hide the Zwift Click button map |

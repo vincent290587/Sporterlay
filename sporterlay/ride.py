@@ -280,14 +280,15 @@ class Ride:
     def watts_for(self, frac: Optional[float]) -> Optional[int]:
         if frac is None:
             return None
-        return round(frac * self.workout_ftp * self.settings.intensity / 100)
+        s = self.settings
+        return max(0, round(frac * self.workout_ftp * s.intensity / 100) + s.target_offset_w)
 
     def wbal_plan(self) -> list[tuple[float, float]]:
         """Predicted W′ balance over the loaded workout, if every target is hit (cached)."""
         if not self.player:
             return []
         s = self.settings
-        key = (id(self.player.workout), self.workout_ftp, s.intensity, s.ftp, s.w_prime_j)
+        key = (id(self.player.workout), self.workout_ftp, s.intensity, s.target_offset_w, s.ftp, s.w_prime_j)
         if self._wbal_plan[0] != key:
             self._wbal_plan = (key, predict(self.player.workout, self.watts_for, s.ftp, s.w_prime_j))
         return self._wbal_plan[1]
