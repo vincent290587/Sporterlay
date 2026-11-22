@@ -376,7 +376,7 @@ class Overlay(QWidget):
             mid = QRectF(pill.right() + 12, hy, 290, hh)
             name = seg.label or ("Ramp" if seg.is_ramp else f"Interval {idx + 1}")
             extra = []
-            if seg.cadence:
+            if seg.cadence and not ride.torque_cadence():  # a torque step shows its own rpm
                 extra.append(f"@ {seg.cadence} rpm")
             if ride.torque_target is not None:
                 rpm = ride.torque_cadence()

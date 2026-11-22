@@ -239,7 +239,7 @@ def ride_state(ride, status: Optional[str], music: Optional[str], card=None, cue
             frac = seg.power_at(into)
             name = seg.label or ("Ramp" if seg.is_ramp else f"Interval {idx + 1}")
             extra = []
-            if seg.cadence:
+            if seg.cadence and not ride.torque_cadence():  # a torque step shows its own rpm
                 extra.append(f"@ {seg.cadence} rpm")
             if ride.torque_target is not None:
                 rpm = ride.torque_cadence()
