@@ -31,6 +31,7 @@ from .ride import Ride
 from .settings import Settings, config_dir
 from .summary import summarize
 from .webscreen import WebScreen, ride_state, workout_key, workout_payload
+from .world import WorldLink
 from .sources import AntSource, DemoSource
 from .workout import parse_zwo
 from .workoutdb import load_workout_db
@@ -228,6 +229,7 @@ class App:
         self._cue_seq = 0
         self._cue = None
         self.web = WebScreen(self.settings.web_port) if self.settings.web_screen else None
+        self.world = WorldLink(self.settings.world_port) if self.settings.world else None
         self.icu_workouts = []
         self.icu_status = ""
         self.click = None
@@ -288,6 +290,8 @@ class App:
         now = time.monotonic()
         dt, self._last = min(now - self._last, 1.0), now
         self.ride.tick(dt)
+        if self.world:
+            self.world.send(self.ride.telemetry.power)  # raw, the world smooths it with its physics
         if self.ride.cues:
             self._cue_seq += 1
             self._cue = self.ride.cues[-1]  # one sound per tick; the step change wins over a tick
@@ -1052,6 +1056,8 @@ class App:
             self.fan.close()
         if self.web:
             self.web.close()
+        if self.world:
+            self.world.close()
         self.tray.hide()
         self.qapp.quit()
 
@@ -1180,6 +1186,7 @@ class App:
             grp.addAction(act(label, lambda key=key: self._set("now_playing", key),
                               checked=s.now_playing == key, menu=npm))
         act("Share power, cadence and HR with Zwift", self.toggle_zwift_share, checked=s.zwift_share, menu=xm)
+        act("Send power to the virtual world (Unreal)", self.toggle_world, checked=s.world, menu=xm)
         fm = xm.addMenu("Fan (KICKR Headwind)")
         fan_state = ""
         if self.fan:
@@ -1242,6 +1249,16 @@ class App:
             self.zwift.close()
             self.zwift = None
             self.flash("Stopped sharing with Zwift")
+
+    def toggle_world(self):
+        self._toggle("world")
+        if self.settings.world and self.world is None:
+            self.world = WorldLink(self.settings.world_port)
+            self.flash(f"Sending power to the virtual world (UDP port {self.settings.world_port})")
+        elif not self.settings.world and self.world is not None:
+            self.world.close()
+            self.world = None
+            self.flash("Stopped sending power to the virtual world")
 
     def _toggle_upload(self):
         self._toggle("icu_auto_upload")

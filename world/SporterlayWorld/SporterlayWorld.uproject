@@ -1,0 +1,13 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.6",
+	"Category": "",
+	"Description": "A ride world driven by Sporterlay's speed; sends the road grade back to the trainer.",
+	"Modules": [
+		{
+			"Name": "SporterlayWorld",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}

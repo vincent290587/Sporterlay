@@ -1,0 +1,13 @@
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+.vs/
+.vscode/
+.idea/
+*.sln
+*.code-workspace
+Makefile
+CMakeLists.txt
+*.pro
+*.kdev4

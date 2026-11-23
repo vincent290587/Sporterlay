@@ -94,6 +94,9 @@ class Settings:
     # Wahoo KICKR Headwind over BLE, speed from HR and W′ (curves in fan.json in this folder)
     fan: bool = False
     fan_address: str = ""  # filled in after the first connection
+    # virtual world (the Unreal project in world/): raw power out over UDP to localhost, nothing back
+    world: bool = False
+    world_port: int = 47810
 
     @classmethod
     def load(cls) -> "Settings":
