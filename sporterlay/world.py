@@ -1,11 +1,11 @@
-"""Power out to a virtual world (the Unreal Engine project in `world/`) over UDP.
+"""Power out to a virtual world (the Godot project in `world/godot`) over UDP.
 
 Every tick (4 Hz) one JSON datagram goes to 127.0.0.1:<world_port>:
     {"v": 1, "power": 245}
 `power` is the raw trainer power in W (0 when stale or not pedaling). It's one way:
 nothing comes back, and Sporterlay's own riding (ERG, gears, speed) doesn't change.
 The world turns power into speed with its own physics. Sending to a port nobody
-listens on is harmless.
+listens on is harmless: Sporterlay never depends on the world running.
 """
 
 from __future__ import annotations

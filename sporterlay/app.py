@@ -1186,7 +1186,7 @@ class App:
             grp.addAction(act(label, lambda key=key: self._set("now_playing", key),
                               checked=s.now_playing == key, menu=npm))
         act("Share power, cadence and HR with Zwift", self.toggle_zwift_share, checked=s.zwift_share, menu=xm)
-        act("Send power to the virtual world (Unreal)", self.toggle_world, checked=s.world, menu=xm)
+        act("Send power to the virtual world", self.toggle_world, checked=s.world, menu=xm)
         fm = xm.addMenu("Fan (KICKR Headwind)")
         fan_state = ""
         if self.fan:
