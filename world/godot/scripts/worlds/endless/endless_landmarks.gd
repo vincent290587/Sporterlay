@@ -185,13 +185,19 @@ func _village(node: Node3D, s0: float, church_side: float, rng: RandomNumberGene
 			var l: int = lens[rng.randi() % lens.size()]
 			var floors := 2 if rng.randf() < 0.45 else 1
 			var mat := "UnevenBrick" if rng.randf() < 0.3 else "Plaster"
-			var off := Route.HALF_WIDTH + rng.randf_range(3.5, 6.0) + l * 0.5
-			kit.house(_frame(s + w * 0.5, side, off), w, l, floors, mat)
-			var door := _frame(s + w * 0.5, side, off - l * 0.5 - 1.0)
+			# Nudge each house along and away from the road and turn it a few
+			# degrees, so the row never reads as a perfectly parallel grid.
+			var along := s + w * 0.5 + rng.randf_range(-1.0, 1.0)
+			var off := Route.HALF_WIDTH + rng.randf_range(4.0, 7.0) + l * 0.5 + rng.randf_range(-0.5, 0.5)
+			var yaw := rng.randf_range(-0.08, 0.08)
+			var turn := Transform3D(Basis(Vector3.UP, yaw), Vector3())
+			var house := _frame(along, side, off) * turn
+			kit.house(house, w, l, floors, mat)
+			var door := _frame(along, side, off - l * 0.5 - 1.0) * turn
 			for _k in rng.randi_range(0, 3):
 				var p := door * Vector3(rng.randf_range(-w * 0.5, w * 0.5), 0.0, rng.randf_range(-0.6, 0.6))
 				kit.prop(["props/Barrel", "props/Crate_Wooden", "props/Bucket_Wooden_1", "village/Prop_Crate"][rng.randi() % 4], p, rng.randf() * TAU)
-			s += w + rng.randf_range(2.5, 7.0)
+			s += w + rng.randf_range(3.2, 7.0)
 			if rng.randf() < 0.35:
 				var a := _frame(s - 1.5, side, Route.HALF_WIDTH + 3.0)
 				kit.fence(a.origin, a.basis.z, 3, func(_x: float, _z: float) -> float: return a.origin.y + 0.1)
