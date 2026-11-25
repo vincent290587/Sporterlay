@@ -6,3 +6,4 @@ dist/
 
 # reference material that isn't ours (talk slides etc.)
 world/*.pdf
+world/Procedural_World_Generation_of_Far_Cry_5.md
