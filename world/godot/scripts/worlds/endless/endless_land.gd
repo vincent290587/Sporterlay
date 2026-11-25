@@ -22,9 +22,11 @@ const DIRT := Color(0.58, 0.48, 0.34)
 var base_noise := FastNoiseLite.new()
 var detail := FastNoiseLite.new()
 var biomes := EndlessBiomes.new()
+var seed := 0
 
 
-func setup(seed: int) -> void:
+func setup(p_seed: int) -> void:
+	seed = p_seed
 	base_noise.seed = seed
 	base_noise.frequency = 0.0006
 	base_noise.fractal_octaves = 3
@@ -159,4 +161,4 @@ func build_tile(key: Vector2i, far: bool, road: Array) -> Dictionary:
 			var k := j * n + i
 			b.tri(k, k + 1, k + n)
 			b.tri(k + 1, k + n + 1, k + n)
-	return {"key": key, "far": far, "mesh": b.commit(), "heights": heights, "dist": dist, "weights": wts, "g": g, "step": step, "origin": Vector2(x0, z0)}
+	return {"key": key, "far": far, "mesh": b.commit(), "heights": heights, "dist": dist, "road_d": dist, "weights": wts, "g": g, "step": step, "origin": Vector2(x0, z0)}

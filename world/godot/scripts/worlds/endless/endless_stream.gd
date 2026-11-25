@@ -19,6 +19,7 @@ class Inbox:
 
 var route: StreamRoute
 var land: EndlessLand
+var kit: EndlessKit
 var rider: Rider
 var ground_mat: Material
 var road_mat: Material
@@ -26,6 +27,7 @@ var _inbox := Inbox.new()
 var _tasks := {}                # key -> task id
 var _tiles := {}                # key -> Node3D
 var _roads := {}                # chunk index -> MeshInstance3D
+var _props: Array = []          # [tile node, kind, Instancer] still to build, a few a frame
 var _want_at := -1e9
 var _want := {}
 
@@ -51,6 +53,7 @@ func prime(s: float) -> void:
 			WorkerThreadPool.wait_for_task_completion(_tasks[key])
 		_tasks.clear()   # waited for: their ids are spent
 		_collect(1000)
+		_build_props(100000)
 		_update(s)
 
 
@@ -58,7 +61,8 @@ func _process(_delta: float) -> void:
 	if rider == null:
 		return
 	_update(rider.distance)
-	_collect(3)
+	_collect(1)
+	_build_props(4)
 
 
 func _exit_tree() -> void:
@@ -147,6 +151,8 @@ func _start(key: Vector3i) -> void:
 	var l := land
 	_tasks[key] = WorkerThreadPool.add_task(func() -> void:
 		var result := l.build_tile(Vector2i(key.x, key.y), far, road)
+		if not far:
+			result["props"] = EndlessScatter.scatter(result, road, l.biomes, l.seed)
 		result["k3"] = key
 		inbox.mutex.lock()
 		inbox.done.append(result)
@@ -172,7 +178,22 @@ func _collect(limit: int) -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if key.z == 1 else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		node.add_child(mi)
 		add_child(node)
+		if r.has("props"):
+			var props: Dictionary = r["props"]
+			for kind: String in props:
+				_props.append([node, kind, props[kind]])
 		_tiles[key] = node
+
+
+func _build_props(limit: int) -> void:
+	var n := 0
+	while n < limit and not _props.is_empty():
+		var p: Array = _props.pop_front()
+		var node: Node3D = p[0]
+		if not is_instance_valid(node) or node.is_queued_for_deletion():
+			continue
+		kit.build_one(node, p[1], p[2])
+		n += 1
 
 
 func _unload() -> void:
@@ -180,9 +201,8 @@ func _unload() -> void:
 		if not _want.has(key):
 			var node: Node3D = _tiles[key]
 			var geo := []
-			for c in node.get_children():
-				if c is GeometryInstance3D:
-					geo.append(c)
+			for c in node.find_children("*", "GeometryInstance3D", true, false):
+				geo.append(c)
 			Lod.forget(geo)
 			node.queue_free()
 			_tiles.erase(key)

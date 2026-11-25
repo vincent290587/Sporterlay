@@ -10,6 +10,7 @@ var route := StreamRoute.new()
 var land := EndlessLand.new()
 var stream := EndlessStream.new()
 var sky := EndlessSky.new()
+var kit := EndlessKit.new()
 
 
 func build(parent: Node3D, seed: int) -> void:
@@ -22,7 +23,9 @@ func build(parent: Node3D, seed: int) -> void:
 	sky.name = "Sky"
 	sky.biomes = land.biomes
 	parent.add_child(sky)
+	kit.setup(seed)
 	stream.name = "Stream"
+	stream.kit = kit
 	stream.route = route
 	stream.land = land
 	parent.add_child(stream)
