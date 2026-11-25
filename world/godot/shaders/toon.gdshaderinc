@@ -1,5 +1,6 @@
 // Shared toon lighting: the sun gives a soft-edged lit band (cut by shadows), a narrow
 // brighter band facing it, and a thin rim. Ambient light fills the shadow side.
+// Point lights (torches) light softly, in a few broad bands of their falloff.
 
 float hash12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -21,8 +22,14 @@ vec3 srgb_to_linear(vec3 c) {
 
 void light() {
 	float ndl = dot(NORMAL, LIGHT);
-	float lit = smoothstep(0.0, 0.08, ndl) * smoothstep(0.3, 0.7, ATTENUATION);
-	float high = smoothstep(0.55, 0.63, ndl) * lit;
-	float rim = smoothstep(0.66, 0.76, 1.0 - max(dot(NORMAL, VIEW), 0.0)) * lit;
-	DIFFUSE_LIGHT += LIGHT_COLOR / PI * (lit * 0.85 + high * 0.15 + rim * 0.2);
+	if (!LIGHT_IS_DIRECTIONAL) {
+		float a = ATTENUATION;
+		float banded = mix(a, floor(a * 4.0 + 0.6) / 4.0, 0.22);
+		DIFFUSE_LIGHT += LIGHT_COLOR / PI * smoothstep(-0.15, 0.35, ndl) * banded;
+	} else {
+		float lit = smoothstep(0.0, 0.08, ndl) * smoothstep(0.3, 0.7, ATTENUATION);
+		float high = smoothstep(0.55, 0.63, ndl) * lit;
+		float rim = smoothstep(0.66, 0.76, 1.0 - max(dot(NORMAL, VIEW), 0.0)) * lit;
+		DIFFUSE_LIGHT += LIGHT_COLOR / PI * (lit * 0.85 + high * 0.15 + rim * 0.2);
+	}
 }

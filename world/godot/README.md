@@ -7,6 +7,7 @@ seed when a world loads, so there are no art assets in the repo.
 |---|---|---|---|
 | Valley | `valley` | Green valley, snowy mountain ring, a wobbly loop. Pure noise. | ~1.6 s |
 | Riverlands | `riverlands` | Autumn river basin (3.6 km across, 7.5 km loop) shaped by simulated water, layered cliffs and scree, forests of competing species, a planned road with bridges and fences | ~30 s |
+| Transylvania | `transylvania` | Late dusk in the Carpathians (6.9 km loop): misty hollows, dark spruce and dead trees, a torch-lit 120 m climb to a vampire's castle you ride through | ~4 s |
 
 F2 switches to the next world while riding. A third world, `gallery`, is a test bench:
 every tree model at each level of detail on flat ground (use with `--cam=`).
@@ -42,6 +43,41 @@ freshwater, then rule-based biomes and layered placement):
 
 The full logic, parameters, tools and tuning guide are in
 [docs/riverlands-generation.md](docs/riverlands-generation.md).
+
+## Transylvania
+
+Properly dark, on purpose. `scripts/worlds/transylvania/`:
+
+- **`TransLand`**: hills, a ring of high Carpathians with snow on the tops, and one
+  ridge stamped along the road's own loop: it rises 120 m (eased, under the grade cap)
+  to a flat crag halfway round, with flanks that steepen into cliffs near the top. The
+  hills fade out on the ridge so the climb never dips. The loop is straightened through
+  the castle so the road runs true through both gates.
+- **`TransCastle`**: built in code in the castle's own frame (x right of the road, z
+  along it): curtain wall with battlements, two gatehouses with a raised portcullis,
+  round towers with red spires, a gabled keep with corner turrets, a great tower that
+  stands in front of the moon on the climb, stables, a well. Lit windows
+  (`window.gdshader`) flicker warm, a few blood red. The ground is levelled under it (`level()`), and the
+  walls go 40 m down so nothing floats on the cliffs.
+- **`TransTorches`**: torch pairs up the climb (16 m apart near the gates, 46 m low
+  down), wall torches at the gates, braziers in the courtyard, and a troiță (roofed
+  wayside cross) with a candle lantern every ~500 m. Flames are instanced quads
+  (`flame.gdshader`); a pool of 18 omni lights follows the nearest fires, fading by
+  distance, the nearest 4 with shadows.
+- **`TransBats`**: big flocks round the great tower and the keep, and small groups
+  low over the road all round the loop, closer together and bigger near the castle.
+  One MultiMesh flown entirely in `bat.gdshader` (orbit and wingbeat from per-instance
+  custom data); they're lit, so the torches catch them.
+- **`TransScenery`**: spruce, late-autumn beech, dead and twisted trees (more near the
+  castle and in the hollows), rocks, ferns, black pools. The mist is a FogVolume
+  (`mist.gdshader`) below `TransLand.MIST` over a thin volumetric haze; the height fog
+  carries it beyond the volumetric range.
+- **Light**: `night_sky.gdshader` (afterglow, stars, moon with maria and halo, thin
+  clouds). The moon is the directional light, placed behind the castle as seen from
+  the climb. The ground mesh casts no shadows.
+
+On the Sports PC (RTX 3060 Ti, 1080p, high): 116 fps on the castle climb, 107 fps in
+the valley mist.
 
 ## How it connects to Sporterlay
 

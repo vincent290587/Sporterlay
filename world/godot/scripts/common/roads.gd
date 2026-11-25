@@ -9,10 +9,12 @@ const PLANK := Color(0.52, 0.38, 0.25)
 
 
 ## `bridge` (optional, one byte per route point) paints those points as wooden planks.
-static func ribbon(route: Route, bridge := PackedByteArray()) -> ArrayMesh:
+## `palette` ([edge, track, centre]) replaces the sandy default.
+static func ribbon(route: Route, bridge := PackedByteArray(), palette := []) -> ArrayMesh:
 	var hw := Route.HALF_WIDTH
 	var cols := [-hw, -hw * 0.45, 0.0, hw * 0.45, hw]
-	var tints := [EDGE, TRACK, CENTRE, TRACK, EDGE]
+	var pal: Array = palette if palette.size() == 3 else [EDGE, TRACK, CENTRE]
+	var tints := [pal[0], pal[1], pal[2], pal[1], pal[0]]
 	var b := MeshBuilder.new()
 	var n := route.count()
 	for m in n:
