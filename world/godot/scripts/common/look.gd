@@ -61,7 +61,7 @@ static func apply(parent: Node3D, overrides := {}) -> DirectionalLight3D:
 	sun.light_color = o.sun_color
 	sun.light_energy = o.sun_energy
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 220.0
+	sun.directional_shadow_max_distance = 400.0
 	sun.shadow_blur = 1.5
 	parent.add_child(sun)
 	return sun

@@ -1,7 +1,7 @@
 # How Riverlands is generated
 
 Riverlands is the second world in the Godot project: an autumn river basin built from a
-seed each time it loads (~8 s). No art assets, no external tools. Everything is
+seed each time it loads (~15 s on the dev box). No art assets, no external tools. Everything is
 GDScript and shaders in this repo. This document covers the pipeline, the logic of each
 step, the parameters that shape it, and the tools used to build and check it.
 
@@ -63,26 +63,26 @@ flowchart TD
 
 | Step | Code | Typical time |
 |---|---|---|
-| 1-4 Land, water, maps, biomes | `RiverLand.build()` | ~0.8 s |
-| 5 Road | `RiverRoad.plan()`, `Route.build_loop()` | ~0.3 s |
-| 6 Render heights | `RiverLand.make_heights()`, `carve()` | ~0.4 s |
+| 1-4 Land, water, maps, biomes | `RiverLand.build()` | ~1.4 s |
+| 5 Road | `RiverRoad.plan()`, `Route.build_loop()` | ~0.4 s |
+| 6 Render heights | `RiverLand.make_heights()`, `carve()` | ~0.7 s |
 | 7 Rock fall | `RiverCliffs.simulate_scree()` | ~0.3 s |
-| 8 Trees | `RiverEcology.place_trees()`, `build_trees()` | ~0.9 s |
-| Meshes | `RiverLand.build_mesh()`, `RiverCliffs.build_skin()`, `water_mesh()` | ~2.3 s |
-| 9 Understory | `RiverEcology.build_understory()` | ~1.9 s |
-| 10-11 Ground cover, built things | `RiverScenery._reeds()`, `_grass()`, `_bridges()`, `_fences()` | ~1.3 s |
+| 8 Trees | `RiverEcology.place_trees()`, `build_trees()` | ~1.6 s |
+| Meshes | `RiverLand.build_mesh()`, `RiverCliffs.build_skin()`, `water_mesh()` | ~3.9 s |
+| 9 Understory | `RiverEcology.build_understory()` | ~3.1 s |
+| 10-11 Ground cover, built things | `RiverScenery._reeds()`, `_grass()`, `_bridges()`, `_fences()` | ~3.8 s |
 
-Times are from the Linux dev box (seed 7, ~8.2 s in all). Each step prints its time.
+Times are from the Linux dev box (seed 7, ~15 s in all). Each step prints its time.
 
 ## Coordinates and grids
 
-- Metres, y up. The playable land is the square −1400…1400 m in x and z (`HALF`).
-- **Analysis grid**: 10 m cells, 281 × 281 (`A_STEP`, `NA`). Water, maps and biomes
+- Metres, y up. The playable land is the square −1800…1800 m in x and z (`HALF`).
+- **Analysis grid**: 10 m cells, 361 × 361 (`A_STEP`, `NA`). Water, maps and biomes
   live here. It's coarse enough to process quickly in GDScript and fine enough for
   rivers and forests.
-- **Render grid**: 5 m, 561 × 561 (`STEP`, `N`). This is the ground mesh, built from the
+- **Render grid**: 5 m, 721 × 721 (`STEP`, `N`). This is the ground mesh, built from the
   analysis heights plus small detail, with the road carved in.
-- **Skirt**: rays from the render grid's edge out to 9 km (`FAR`) for the mountains on
+- **Skirt**: rays from the render grid's edge out to 10 km (`FAR`) for the mountains on
   the horizon. It reuses the edge vertices, so there's no seam.
 - **Edge fade**: in the outer 260 m, everything blends back to the base land and no water
   is placed, so the land meets the skirt cleanly (`_edge()`).
@@ -100,7 +100,7 @@ lookups are `cell()` and `water_at()`.
 - **Tilt towards the outlet**: −0.035 × (distance along a seed-chosen direction), up to
   ±49 m. Without it the basin would drain nowhere and become one big lake.
 - **Mountain ring**: ridged fractal noise for sharp crests, 180-830 m, faded in from
-  850 m to 2600 m from the centre. In the outlet direction the ring is cut by 85 %,
+  60 % to 185 % of `HALF` from the centre (1080-3330 m). In the outlet direction the ring is cut by 85 %,
   leaving a gap where the river leaves.
 
 The same function feeds the skirt, so the mountains on the horizon match the land.
@@ -145,7 +145,8 @@ catchment area in units of 100 m².
    basins fill with sediment, and this turns most would-be lakes into flat plains.
 4. **Second flood** on the shaped land gives the final water:
    - **Lake** where the fill depth is over 2 m (`LAKE_DEPTH`): water at the fill height
-     minus 0.2 m.
+     minus 0.2 m. A lake that reaches into the edge zone is dropped whole (`_lakes()`),
+     because clipping it there would leave a straight shore.
    - **River** where `acc ≥ 450` (0.045 km² of catchment, `RIVER_ACC`): water 0.3 m below
      the bank, bed `0.8 + 0.5 × ln(acc / 450)` m deeper (0.8-3.5 m).
    - Rivers with 12× that catchment are widened to their 8 neighbours at the same water
@@ -212,13 +213,15 @@ All colours are sRGB constants at the top of `river_land.gd`.
 
 `RiverRoad.plan()` lays out the route like an engineer would.
 
-1. **Waypoints**: 7 around the basin, 520-820 m from the centre at seed-jittered angles.
-   Each one moves to the gentlest dry cell within ±60 m (`_best_cell()`: low slope, not
-   alpine, not in or next to water).
+1. **Waypoints**: 9 around the basin, 42-66 % of `HALF` from the centre (760-1190 m) at
+   seed-jittered angles. Each one moves to the best cell within ±120 m (`_best_cell()`:
+   low slope, not alpine, not water, and well away from it: `10·e^(−dw/40)`, otherwise
+   the road gets led along a river to reach it).
 2. **A\*** between consecutive waypoints on the analysis grid (8 neighbours). The cost
    of each step (length `L`, grade `g` between water surfaces or ground):
 
-   `L × (1 + 400·g² + 4·slope + 3·alpine)`, plus `14·L` if the cell is water.
+   `L × (1 + 400·g² + 4·slope + 3·alpine)`, plus `14·L` if the cell is water, or
+   `8·L·e^(−dw/25)` if it's dry but near water (cross rivers, don't follow their banks).
 
    The grade term makes climbing expensive, so the road follows valleys or traverses
    slopes. Water is costly but allowed, which gives a few bridges, not none. The
@@ -281,7 +284,7 @@ the particle's layer colour. The result, blurred once and kept off the cliffs th
 is `scree` (0…1) and `scree_col`.
 
 **Skin** (`build_skin()`): every render quad with a corner steeper than normal.y 0.77
-(about 40°), away from road and water, is split 2×2. Each vertex is pushed out along the
+(about 40°), away from road and water, is split 3×3 (~1.7 m). Each vertex is pushed out along the
 slope's horizontal direction by `cliffness × (0.3 + layer depth + crag noise × 0.5) + 0.12`
 m, where cliffness ramps from 0 at normal.y 0.77 to 1 at 0.68, so the skin melts into the
 ground at its edges. Colour blends from the ground colour to the layer colour by
@@ -332,7 +335,8 @@ the ground colour, the raised forest floor and the understory.
 
 **Rendering**: one `Instancer` per species and colour (broadleaf in four autumn
 palettes picked by a hue noise plus a random nudge, so colours come in patches with
-strays), full meshes to 450 m and one-blob/one-cone versions to 2.2 km.
+strays), full meshes to 900 m and one-blob/one-cone versions to 2.2 km. Shadows reach
+400 m.
 
 ## 9. Understory (`RiverEcology.build_understory()`)
 
@@ -355,7 +359,8 @@ trunks, and clear of other understory by its own radius.
 
 - **Reeds** at the shore (0.7 m under to 0.9 m above the nearest water, within 15 m of
   it), tipping towards the water.
-- **Grass** along the road (110 clumps per 2 m of road, out to 110 m), thinner in forest
+- **Grass** along the road (200 clumps per 2 m of road, out to 200 m, drawn to 210 m and
+  sinking into the ground from 130 to 190 m), thinner in forest
   and rock. Its colour is the biome ground colour, turned rust in wetland 8-20 m from the
   water. Every blade tips the same way (a lean built into the mesh), and the clump is
   turned to lean **towards the water** within 25 m of it and **with the wind map**
@@ -451,16 +456,18 @@ and prints the steepest 2 m step was used. It isn't kept in the repo.
 
 - Rivers are on the 10 m grid, so they're at least ~10 m wide and their courses step
   slightly. A finer water mesh or a river spline would fix it.
-- The cliff skin is built on the 5 m ground grid split 2×2, so strata steps are ~2.5 m
-  apart; thin layers show as colour more than as shape.
+- The cliff skin is built on the 5 m ground grid split 3×3, so strata steps are ~1.7 m
+  apart; the thinnest layers show as colour more than as shape.
 - The raised forest floor is on the 5 m grid: it lifts whole woods gently, not the
   ground around each trunk.
 - The rider's camera can pass close to a tree trunk on a bend.
 - Some seeds may still give an odd road (a long detour, a crossing over itself). Check
   the map.
-- About 34k trees, 130k understory props, 100k ferns and 200k grass clumps (seed 7).
-  Chunks and distance limits keep the drawn share small, but it hasn't been measured on
-  the Windows ride PC yet. Generation takes ~8 s.
+- About 61k trees, 200k understory props, 180k ferns and 570k grass clumps (seed 7, 7.5 km
+  road). At 1080p on the dev box (RX 7900 XT): 561 fps average, 528 fps 1 % low, 0.56 GB
+  video memory, 0.46 GB RAM, 14 M triangles a frame. Not yet measured on the ride PC
+  (RTX 3060 Ti); expected well over 60 fps. Generation takes ~15 s and is single-threaded.
+- The basin has many rivers, so the loop crosses water ~15 times, mostly small streams.
 
 ## References
 

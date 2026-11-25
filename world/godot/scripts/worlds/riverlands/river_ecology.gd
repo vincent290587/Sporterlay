@@ -21,11 +21,11 @@ extends RefCounted
 ##               ferns in the shade, mossy rocks around the conifers.
 
 const TREE_CHUNK := 200.0
-const TREE_DETAIL := 450.0
+const TREE_DETAIL := 900.0
 const TREE_VISIBLE := 2200.0
 const SMALL_CHUNK := 64.0
 const SMALL_VISIBLE := 350.0
-const FERN_VISIBLE := 160.0
+const FERN_VISIBLE := 200.0
 
 const TREE_PRIORITY_RADIUS := 1.0   # how close understory may grow to a trunk
 const TREE_RADIUS := 6.0            # trees' viability radius at size 1 (big trees keep more room)

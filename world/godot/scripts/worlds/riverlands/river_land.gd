@@ -9,12 +9,12 @@ extends RefCounted
 ##   4. biome fields from those maps (forest, conifer share, wetland, heath, alpine),
 ##      read by the scatter and by the ground colours.
 
-const HALF := 1400.0
+const HALF := 1800.0
 const A_STEP := 10.0          # analysis grid
-const NA := 281
+const NA := 361
 const STEP := 5.0             # render grid
-const N := 561
-const FAR := 9000.0
+const N := 721
+const FAR := 10000.0
 const SKIRT_LEVELS := 36
 const ROAD_REACH := 48.0
 const RIVER_ACC := 450.0      # 10 m cells draining through a cell before it's a river (0.045 km²)
@@ -116,7 +116,7 @@ func base(x: float, z: float) -> float:
 	var h := hills.get_noise_2d(px, pz) * 80.0
 	h -= clampf(outlet.dot(Vector2(x, z)), -HALF, HALF) * 0.035   # the basin drains to the outlet
 	var r := Vector2(x, z).length()
-	var m := smoothstep(850.0, 2600.0, r)
+	var m := smoothstep(HALF * 0.6, HALF * 1.85, r)   # mountains rise past ~60 % of the way out
 	if m > 0.0:
 		var gap := smoothstep(0.80, 0.96, outlet.dot(Vector2(x, z) / maxf(r, 1.0)))
 		h += m * (1.0 - 0.85 * gap) * (180.0 + 650.0 * (ridges.get_noise_2d(x, z) * 0.5 + 0.5))
@@ -166,12 +166,13 @@ func build() -> void:
 	wl.resize(n)
 	wl.fill(DRY)
 	var widen := []
+	var lake := _lakes(filled, h1)
 	for c in n:
 		var x := _ax(c % NA)
 		var z := _ax(c / NA)
 		if _edge(x, z) > 0.0:
 			continue
-		if filled[c] - h1[c] > LAKE_DEPTH:
+		if lake[c] != 0:
 			wl[c] = filled[c] - 0.2
 		elif acc[c] >= RIVER_ACC:
 			var depth := clampf(0.8 + 0.5 * log(acc[c] / RIVER_ACC), 0.8, 3.5)
@@ -193,6 +194,44 @@ func build() -> void:
 
 	_analyse()
 	print("  analysis and biomes: %d ms" % (Time.get_ticks_msec() - t))
+
+
+## Lake cells (hollows filled deeper than LAKE_DEPTH), dropping every lake that reaches
+## into the edge zone: clipping it there would leave a straight shore.
+func _lakes(filled: PackedFloat32Array, h: PackedFloat32Array) -> PackedByteArray:
+	var n := NA * NA
+	var lake := PackedByteArray()
+	lake.resize(n)
+	for c in n:
+		if filled[c] - h[c] > LAKE_DEPTH:
+			lake[c] = 1
+	var seen := PackedByteArray()
+	seen.resize(n)
+	for start in n:
+		if lake[start] == 0 or seen[start] != 0:
+			continue
+		var group := PackedInt32Array([start])
+		seen[start] = 1
+		var k := 0
+		var touches_edge := false
+		while k < group.size():
+			var c := group[k]
+			k += 1
+			if _edge(_ax(c % NA), _ax(c / NA)) > 0.0:
+				touches_edge = true
+			for d in 4:
+				var ni: int = c % NA + DX[d]
+				var nj: int = c / NA + DZ[d]
+				if ni < 0 or nj < 0 or ni >= NA or nj >= NA:
+					continue
+				var nb := nj * NA + ni
+				if lake[nb] != 0 and seen[nb] == 0:
+					seen[nb] = 1
+					group.append(nb)
+		if touches_edge:
+			for c in group:
+				lake[c] = 0
+	return lake
 
 
 ## Priority flood: fills every hollow up to its spill height (lakes) and records where

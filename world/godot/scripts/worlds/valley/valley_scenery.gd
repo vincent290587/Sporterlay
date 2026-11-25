@@ -6,10 +6,10 @@ const TOON := preload("res://shaders/toon_vcol.gdshader")
 const GRASS := preload("res://shaders/grass.gdshader")
 const WATER := preload("res://shaders/water.gdshader")
 
-const GRASS_PER_SAMPLE := 120     # clumps per 2 m of road, both sides
-const GRASS_REACH := 110.0        # m from the road
+const GRASS_PER_SAMPLE := 210     # clumps per 2 m of road, both sides
+const GRASS_REACH := 200.0        # m from the road
 const GRASS_CHUNK := 32.0
-const GRASS_VISIBLE := 125.0
+const GRASS_VISIBLE := 210.0
 const TREE_CHUNK := 200.0
 const TREE_VISIBLE := 1500.0
 

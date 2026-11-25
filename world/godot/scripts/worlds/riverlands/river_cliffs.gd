@@ -7,7 +7,7 @@ extends RefCounted
 ##   strata    the land is sliced into horizontal layers of random thickness (1.2-4.5 m),
 ##             tilted by one of three dips per region; a blocky noise splits the cliffs
 ##             into two groups with different layer sets, so lines don't run on forever.
-##   skin      render-grid quads on steep ground, subdivided 2x2 (2.5 m), each vertex
+##   skin      render-grid quads on steep ground, subdivided 3x3 (~1.7 m), each vertex
 ##             pushed out along the slope by its layer's depth and some crag noise, faded
 ##             to nothing where the ground stops being steep.
 ##   colour    each layer has its colour; the terrain under and around the skin takes the
@@ -19,7 +19,7 @@ extends RefCounted
 
 const CLIFF_NY_START := 0.77    # normal.y where the skin starts
 const CLIFF_NY_FULL := 0.68     # and where it's fully out
-const SUB := 2                  # quad subdivision (2.5 m)
+const SUB := 3                  # quad subdivision (~1.7 m)
 const LEDGE_UP := 0.8           # face normal.y for a ledge
 
 const ROCKS := [Color(0.74, 0.64, 0.50), Color(0.60, 0.57, 0.54), Color(0.68, 0.52, 0.44),

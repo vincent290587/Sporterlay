@@ -5,7 +5,7 @@ extends RefCounted
 ## water (bridges are expensive) and rough, high ground; the road ends up following
 ## valleys and crossing rivers where it must.
 
-const WAYPOINTS := 7
+const WAYPOINTS := 9
 
 
 static func plan(land: RiverLand, seed: int) -> PackedVector2Array:
@@ -16,7 +16,7 @@ static func plan(land: RiverLand, seed: int) -> PackedVector2Array:
 	var stops := PackedInt32Array()
 	for k in WAYPOINTS:
 		var a := offset + TAU * k / WAYPOINTS + rng.randf_range(-0.2, 0.2)
-		var r := rng.randf_range(520.0, 820.0)
+		var r := rng.randf_range(0.42, 0.66) * RiverLand.HALF
 		stops.append(_best_cell(land, Vector2(cos(a), sin(a)) * r))
 	var cells := PackedInt32Array()
 	for k in WAYPOINTS:
@@ -58,20 +58,20 @@ static func _drop_spurs(cells: PackedInt32Array) -> PackedInt32Array:
 	return out
 
 
-## The gentlest dry cell near `p`.
+## The gentlest cell within ±120 m of `p`, well away from water.
 static func _best_cell(land: RiverLand, p: Vector2) -> int:
 	var na := RiverLand.NA
 	var ci := int((p.x + RiverLand.HALF) / RiverLand.A_STEP)
 	var cj := int((p.y + RiverLand.HALF) / RiverLand.A_STEP)
 	var best := cj * na + ci
 	var best_score := 1e30
-	for j in range(cj - 6, cj + 7):
-		for i in range(ci - 6, ci + 7):
+	for j in range(cj - 12, cj + 13):
+		for i in range(ci - 12, ci + 13):
 			if i < 1 or j < 1 or i >= na - 1 or j >= na - 1:
 				continue
 			var c := j * na + i
 			var score := land.slope[c] * 10.0 + land.alpine[c] * 5.0 + (20.0 if land.wl[c] != RiverLand.DRY else 0.0)
-			score += exp(-land.dw[c] / 20.0) * 2.0
+			score += exp(-land.dw[c] / 40.0) * 10.0   # away from rivers, so the road isn't led along them
 			if score < best_score:
 				best_score = score
 				best = c
@@ -122,6 +122,8 @@ static func _astar(land: RiverLand, from: int, to: int) -> PackedInt32Array:
 			var cost := seg_len * (1.0 + 400.0 * grade * grade + 4.0 * land.slope[nb] + 3.0 * land.alpine[nb])
 			if land.wl[nb] != RiverLand.DRY:
 				cost += seg_len * 14.0
+			else:
+				cost += seg_len * 8.0 * exp(-land.dw[nb] / 25.0)   # cross rivers, don't follow their banks
 			var ng := g[c] + cost
 			if ng < g[nb]:
 				g[nb] = ng

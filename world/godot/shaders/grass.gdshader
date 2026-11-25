@@ -7,8 +7,8 @@ render_mode cull_disabled, world_vertex_coords;
 #include "res://shaders/toon.gdshaderinc"
 
 uniform vec2 wind_dir = vec2(0.8, 0.6);
-uniform float fade_start = 65.0;
-uniform float fade_end = 110.0;
+uniform float fade_start = 130.0;
+uniform float fade_end = 190.0;
 
 varying vec3 wpos;
 

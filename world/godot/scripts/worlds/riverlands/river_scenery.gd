@@ -11,9 +11,9 @@ const GRASS := preload("res://shaders/grass.gdshader")
 const WATER := preload("res://shaders/water.gdshader")
 
 const GRASS_CHUNK := 32.0
-const GRASS_VISIBLE := 125.0
-const GRASS_PER_SAMPLE := 110
-const GRASS_REACH := 110.0
+const GRASS_VISIBLE := 210.0
+const GRASS_PER_SAMPLE := 200
+const GRASS_REACH := 200.0
 const WOOD := Color(0.50, 0.36, 0.24)
 const RUST := Color(0.70, 0.42, 0.22)
 
@@ -85,7 +85,7 @@ static func _reeds(parent: Node3D, land: RiverLand, rng: RandomNumberGenerator, 
 			var to_water := land.water_dir(x, z)
 			var yaw := _yaw_to(to_water) + rng.randf_range(-0.5, 0.5) if to_water != Vector2.ZERO else rng.randf() * TAU
 			reeds.put(Vector3(x, h, z), yaw, rng.randf_range(0.8, 1.3), rng.randf_range(0.8, 1.2), tint)
-	print("  reeds: ", reeds.build(parent, Meshes.reeds_leaning(rng), mat, 200.0, false))
+	print("  reeds: ", reeds.build(parent, Meshes.reeds_leaning(rng), mat, 220.0, false))
 
 
 ## Grass and wildflowers along the road, as thick as the biome allows.
