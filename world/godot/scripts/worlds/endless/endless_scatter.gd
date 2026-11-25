@@ -115,6 +115,8 @@ static func scatter(tile: Dictionary, road: Array, land: EndlessLand, seed: int)
 			var at := _sample(tile, px, pz)
 			if at.is_empty() or float(at.rd) < Route.HALF_WIDTH + 0.6 or float(at.ny) < 0.8:
 				continue
+			if land.pad_inside(px, pz, 4.0):
+				continue   # no grass through the village houses or in the lake
 			var b := _pick(rng, at.w)
 			var pos := Vector3(px, float(at.h) - 0.03, pz)
 			var yaw := rng.randf() * TAU

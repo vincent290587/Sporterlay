@@ -1,3 +1,5 @@
 .godot/
 build/
 *.import
+# third-party packs that may not be handed on (tools/import_assets.py --bundle)
+assets/local/

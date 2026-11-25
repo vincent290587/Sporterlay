@@ -1,0 +1,8 @@
+Models and textures: Fantasy Props MegaKit (Standard) by Quaternius
+https://quaternius.com
+
+License: CC0 1.0 Universal (public domain dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Copied by tools/import_assets.py: a subset of the models, normal and roughness maps
+removed, textures reduced in size.

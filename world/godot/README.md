@@ -147,8 +147,12 @@ around the rider is generated as they ride and dropped behind them. The same
   models made once from all our worlds.
 - **`EndlessSky`** + `journey_sky.gdshader`: sky, sun or moon, ambient and fog
   blended every frame from the biomes' looks (day sky and dusk sky in one shader).
-- **`EndlessLandmarks`**: every 10-20 km, by biome: Transylvania's castle on a crag in
-  a clearing beside the road (dusk forest), a natural arch over it (canyon).
+- **`EndlessLandmarks`**: every 10-20 km, by biome, kept in their biome and off the
+  cols: a village the road runs through, built from the village kit (valley); a lake
+  with a jetty, a boathouse and a moored raft (autumn); Transylvania's castle on a
+  crag in a clearing (dusk forest); the natural arch and a ruined desert fort from the
+  Raft pack (canyon). A cairn with a banner on every col's summit. Pack models are
+  loaded at world start, so building a landmark never stalls a frame.
 
 Sports PC, riding at ~50 km/h: valley 240 fps, dusk forest 171 fps, worst frame
 12.8 ms.
@@ -205,12 +209,33 @@ the export templates the first time). It writes `build/SporterlayWorld.exe` with
 game embedded. Icon/version editing (`application/modify_resources`) is off, so rcedit
 isn't needed.
 
-## Third-party models (experiment)
+## Third-party models
+
+`tools/import_assets.py <pack> <unzipped folder>` copies the models we use from each
+pack into `assets/`, dropping normal and roughness maps and shrinking textures:
+
+| Pack | Folder | License | Used for |
+|---|---|---|---|
+| Quaternius Stylized Nature MegaKit | `assets/megakit` | CC0 | trees, plants, rocks |
+| Quaternius Medieval Village MegaKit (Standard) | `assets/village` | CC0 | houses and the church (`VillageKit`), jetty, fences |
+| Quaternius Fantasy Props MegaKit (Standard) | `assets/props` | CC0 | barrels, crates, stalls, lanterns, banners |
+| Raft on the Desert (EmacEArt) | `assets/local/raft` | ships in a game, not as files | the desert fort, the lake's raft |
+
+The Raft pack's license forbids handing the files on, and the repository is public, so
+`assets/local/` is ignored by git. `tools/import_assets.py --bundle out.zip` packs it to
+carry to another computer, `--unbundle out.zip` puts it back there. Everything that
+uses a pack checks for it (`MegaKit.has_pack`) and falls back or leaves it out.
+
+`VillageKit` (`scripts/common/village_kit.gd`) assembles buildings from the village
+kit's modules (2 m wall panels 3.12 m tall, finished side at -z; roofs by footprint),
+one MultiMesh per module type, with a dark interior box behind the openings.
+
+### Stylized Nature MegaKit
 
 `assets/megakit/` holds 33 models from Quaternius' [Stylized Nature
 MegaKit](https://quaternius.com/packs/stylizednaturemegakit.html) (CC0, see its
 `LICENSE.txt`): twisted and dead trees, bushes, ferns, plants, purple flowers, mushrooms,
-rocks and pebbles. `tools/import_megakit.py <unzipped pack>` makes that
+rocks and pebbles. `tools/import_assets.py megakit <unzipped pack>` makes that
 folder from the free Standard pack: it picks the models, removes normal maps and shrinks
 textures (11 MB). Without the folder the worlds fall back to our own models. `MegaKit` (`scripts/common/megakit.gd`) turns a model into a mesh drawn
 with our `toon_tex` shader (texture × tint, toon light, cut-outs, sway, LOD dissolve),

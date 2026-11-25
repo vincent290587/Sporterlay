@@ -1,7 +1,9 @@
 class_name MegaKit
 extends RefCounted
-## Models from Quaternius' Stylized Nature MegaKit (CC0, assets/megakit, prepared by
-## tools/import_megakit.py), turned into plain meshes drawn with our toon_tex shader:
+## Models from imported packs (tools/import_assets.py): Quaternius' Stylized Nature
+## MegaKit (CC0, assets/megakit), the Medieval Village and Fantasy Props MegaKits
+## (assets/village, assets/props) and local-only ones (assets/local), turned into plain
+## meshes drawn with our toon_tex shader:
 ##
 ##   TREE   leaf surfaces get normals pointing away from the crown's centre (the soft
 ##          one-volume toon shading of our own trees) and sway; bark keeps its normals
@@ -27,6 +29,22 @@ static func available() -> bool:
 	return DirAccess.dir_exists_absolute("res://assets/megakit")
 
 
+## Whether a pack was imported (tools/import_assets.py): "village", "props", or a
+## local-only one such as "local/raft".
+static func has_pack(pack: String) -> bool:
+	return DirAccess.dir_exists_absolute("res://assets/" + pack)
+
+
+## Models are named by pack: "Rock_Medium_1" (the nature kit), "village/Wall_Arch",
+## "local/raft/EA04_Bld_Tower_Main_01a" (glb).
+static func _path(name: String) -> String:
+	if name.begins_with("local/"):
+		return "res://assets/%s.glb" % name
+	if "/" in name:
+		return "res://assets/%s.gltf" % name
+	return DIR % name
+
+
 ## Forget the materials (a new world registers fresh ones with the LOD manager).
 static func reset() -> void:
 	_mats.clear()
@@ -43,7 +61,11 @@ static func mesh(name: String, style: int, tier := 0) -> ArrayMesh:
 	var key := "%s:%d:%d" % [name, style, tier]
 	if _meshes.has(key):
 		return _meshes[key]
-	var scene: PackedScene = load(DIR % name)
+	var scene: PackedScene = load(_path(name))
+	var fallback: Texture2D = null   # packs whose models come without their texture (one shared atlas)
+	var atlas := _path(name).get_base_dir().path_join("texture.png")
+	if ResourceLoader.exists(atlas):
+		fallback = load(atlas)
 	var root: Node3D = scene.instantiate()
 	var out := ArrayMesh.new()
 	for mi: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
@@ -57,6 +79,8 @@ static func mesh(name: String, style: int, tier := 0) -> ArrayMesh:
 			if src is BaseMaterial3D:
 				tex = (src as BaseMaterial3D).albedo_texture
 				cut = (src as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED
+			if tex == null:
+				tex = fallback
 			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 			var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
 			for i in verts.size():
