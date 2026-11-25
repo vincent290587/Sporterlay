@@ -1,8 +1,9 @@
 class_name RiverWorld
 extends RefCounted
 ## The second world: an autumn river basin shaped by simulated water, with biomes
-## read from terrain analysis maps and a road planned over the land (see RiverLand,
-## RiverRoad, RiverScenery).
+## read from terrain analysis maps, a road planned over the land, a cliff tool and an
+## ecosystem of competing species (see RiverLand, RiverRoad, RiverCliffs, RiverEcology,
+## RiverScenery, and docs/riverlands-generation.md).
 
 const TITLE := "Riverlands"
 
@@ -19,6 +20,12 @@ func build(parent: Node3D, seed: int) -> void:
 	print("  road planned: %d ms" % (Time.get_ticks_msec() - t))
 	land.make_heights()
 	land.carve(route)
+	t = Time.get_ticks_msec()
+	var cliffs := RiverCliffs.new()
+	cliffs.setup(land, seed)
+	land.strata = cliffs
+	cliffs.simulate_scree(seed)
+	print("  rock fall: %d ms" % (Time.get_ticks_msec() - t))
 	Look.apply(parent, {
 		"sky_top": Color(0.40, 0.58, 0.86),
 		"sky_horizon": Color(0.93, 0.87, 0.78),
@@ -40,7 +47,7 @@ func build(parent: Node3D, seed: int) -> void:
 		if bridges[m] != 0 and bridges[(m - 1 + route.count()) % route.count()] == 0:
 			spans.append("%d m" % int(m * route.spacing))
 	print("  bridges at: ", ", ".join(spans))
-	RiverScenery.build(parent, land, route, bridges, seed)
+	RiverScenery.build(parent, land, route, bridges, cliffs, seed)
 
 
 ## Route points over water, widened a little for the abutments.

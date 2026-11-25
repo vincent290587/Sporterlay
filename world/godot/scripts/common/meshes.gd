@@ -10,8 +10,9 @@ const NEEDLE_LIGHT := Color(0.26, 0.48, 0.28)
 
 
 ## Nine blades, each bent in two segments. UV.y is 0 at the root and 1 at the tip
-## (the grass shader bends by it); colour comes from the instance.
-static func grass_clump(rng: RandomNumberGenerator) -> ArrayMesh:
+## (the grass shader bends by it); colour comes from the instance. `lean` tips every
+## blade the same way (local +x), for grass combed by the wind or leaning to water.
+static func grass_clump(rng: RandomNumberGenerator, lean_all := Vector3.ZERO) -> ArrayMesh:
 	var b := MeshBuilder.new()
 	for _k in 9:
 		var a := rng.randf() * TAU
@@ -19,7 +20,7 @@ static func grass_clump(rng: RandomNumberGenerator) -> ArrayMesh:
 		var base := Vector3(cos(a) * r, -0.05, sin(a) * r)
 		var facing := rng.randf() * TAU
 		var side := Vector3(cos(facing), 0.0, sin(facing)) * rng.randf_range(0.04, 0.07)
-		var lean := Vector3(cos(facing + 1.57), 0.0, sin(facing + 1.57)) * rng.randf_range(-0.25, 0.25)
+		var lean := Vector3(cos(facing + 1.57), 0.0, sin(facing + 1.57)) * rng.randf_range(-0.25, 0.25) + lean_all
 		var h := rng.randf_range(0.35, 0.8)
 		var mid := base + lean * 0.3 + Vector3(0.0, h * 0.5, 0.0)
 		var w := Color.WHITE
@@ -295,4 +296,92 @@ static func flowers(rng: RandomNumberGenerator, petal: Color) -> ArrayMesh:
 			ring.append(b.add(top + Vector3(cos(pa) * s, 0.01, sin(pa) * s), Vector3.UP, petal, Vector2(0.5, 1.0)))
 		for p in 5:
 			b.tri_raw(c, ring[p], ring[(p + 1) % 5])
+	return b.commit()
+
+
+## A fern: fronds arching out from the middle, for the grass shader (it sways).
+## White, so the instance colour gives it its autumn hue.
+static func fern(rng: RandomNumberGenerator) -> ArrayMesh:
+	var b := MeshBuilder.new()
+	var fronds := 8
+	for f in fronds:
+		var a := TAU * f / fronds + rng.randf_range(-0.2, 0.2)
+		var d := Vector3(cos(a), 0.0, sin(a))
+		var side := Vector3(-d.z, 0.0, d.x)
+		var reach := rng.randf_range(0.6, 0.9)
+		var pts := [Vector3.ZERO, d * reach * 0.35 + Vector3(0, 0.45, 0), d * reach * 0.75 + Vector3(0, 0.42, 0), d * reach + Vector3(0, 0.22, 0)]
+		var widths := [0.03, 0.14, 0.1, 0.0]
+		var prev_l := -1
+		var prev_r := -1
+		for k in pts.size():
+			var p: Vector3 = pts[k]
+			var w: float = widths[k]
+			var shade := Color(0.75, 0.75, 0.75).lerp(Color.WHITE, k / 3.0)
+			var uv := Vector2(0.5, k / 3.0)
+			var l := b.add(p - side * w, Vector3.UP, shade, uv)
+			var r := b.add(p + side * w, Vector3.UP, shade, uv)
+			if prev_l >= 0:
+				b.tri_raw(prev_l, prev_r, r)
+				b.tri_raw(prev_l, r, l)
+			prev_l = l
+			prev_r = r
+	return b.commit()
+
+
+## A tapered limb from `a` to `c`.
+static func limb(b: MeshBuilder, a: Vector3, c: Vector3, r0: float, r1: float, segs: int, col: Color) -> void:
+	var dir := (c - a).normalized()
+	var side := dir.cross(Vector3.UP)
+	if side.length() < 0.1:
+		side = Vector3.RIGHT
+	side = side.normalized()
+	var up := side.cross(dir).normalized()
+	var start := b.verts.size()
+	for s in segs:
+		var ang := TAU * s / segs
+		var o := side * cos(ang) + up * sin(ang)
+		b.add(a + o * r0, o, col.darkened(0.1))
+		b.add(c + o * r1, o, col)
+	for s in segs:
+		var s2 := (s + 1) % segs
+		b.quad(start + s * 2, start + s2 * 2, start + s2 * 2 + 1, start + s * 2 + 1)
+
+
+## A dead tree: a grey trunk with a few bare branches.
+static func dead_tree(rng: RandomNumberGenerator) -> ArrayMesh:
+	var b := MeshBuilder.new()
+	var bark := Color(0.56, 0.52, 0.48)
+	limb(b, Vector3(0, -0.5, 0), Vector3(0.2, 8.0, 0.1), 0.3, 0.08, 6, bark)
+	for k in 5:
+		var y := rng.randf_range(3.0, 7.0)
+		var a := rng.randf() * TAU
+		var base := Vector3(0.2 * y / 8.0, y, 0.1 * y / 8.0)
+		var tip := base + Vector3(cos(a) * rng.randf_range(1.2, 2.4), rng.randf_range(0.8, 2.0), sin(a) * rng.randf_range(1.2, 2.4))
+		limb(b, base, tip, 0.1, 0.03, 4, bark)
+	return b.commit()
+
+
+## Reeds all tipping towards local +x (towards the water once turned).
+static func reeds_leaning(rng: RandomNumberGenerator) -> ArrayMesh:
+	var b := MeshBuilder.new()
+	for _k in 10:
+		var a := rng.randf() * TAU
+		var r := sqrt(rng.randf()) * 0.4
+		var base := Vector3(cos(a) * r, -0.1, sin(a) * r)
+		var side := Vector3(0.0, 0.0, 0.035)
+		var lean := Vector3(rng.randf_range(0.15, 0.45), 0.0, rng.randf_range(-0.12, 0.12))
+		var h := rng.randf_range(1.2, 1.9)
+		var w := Color.WHITE
+		b.tri_raw(b.add(base - side, Vector3.UP, w, Vector2(0.0, 0.0)),
+			b.add(base + side, Vector3.UP, w, Vector2(1.0, 0.0)),
+			b.add(base + lean + Vector3(0.0, h, 0.0), Vector3.UP, w, Vector2(0.5, 1.0)))
+		if rng.randf() < 0.3:
+			var top := base + lean * 0.8 + Vector3(0.0, h * 0.8, 0.0)
+			var brown := Color(0.45, 0.30, 0.18)
+			var j0 := b.add(top - side * 1.6, Vector3.UP, brown, Vector2(0.0, 0.9))
+			var j1 := b.add(top + side * 1.6, Vector3.UP, brown, Vector2(1.0, 0.9))
+			var j2 := b.add(top + side * 1.6 + Vector3(0.0, 0.22, 0.0), Vector3.UP, brown, Vector2(1.0, 0.95))
+			var j3 := b.add(top - side * 1.6 + Vector3(0.0, 0.22, 0.0), Vector3.UP, brown, Vector2(0.0, 0.95))
+			b.tri_raw(j0, j1, j2)
+			b.tri_raw(j0, j2, j3)
 	return b.commit()

@@ -34,6 +34,7 @@ const MEADOW_GOLD := Color(0.70, 0.70, 0.32)
 const HEATH := Color(0.66, 0.58, 0.36)
 const HEATHER := Color(0.55, 0.40, 0.52)
 const LITTER := Color(0.62, 0.44, 0.22)
+const LITTER_FALL := Color(0.74, 0.46, 0.20)   # fresh autumn leaves under the trees
 const NEEDLES := Color(0.33, 0.40, 0.22)
 const LUSH := Color(0.30, 0.52, 0.24)
 const MUD := Color(0.50, 0.44, 0.32)
@@ -67,6 +68,15 @@ var wet := PackedFloat32Array()
 var heath := PackedFloat32Array()
 var alpine := PackedFloat32Array()
 var ground := PackedColorArray()
+var occl := PackedFloat32Array()    # share of the sky hidden by the land around, 0..1
+var wind_x := PackedFloat32Array()  # wind direction, bending around hills
+var wind_z := PackedFloat32Array()
+# written by later tools (cliffs, ecology), read by the ground colours
+var scree := PackedFloat32Array()   # rock fall below cliffs, 0..1
+var scree_col := PackedColorArray()
+var canopy_broad := PackedFloat32Array()
+var canopy_conifer := PackedFloat32Array()
+var strata: RiverCliffs             # cliff layer colours, once the cliffs are made
 
 # render grid (N x N)
 var heights := PackedFloat32Array()
@@ -272,6 +282,10 @@ func _analyse() -> void:
 	wet.resize(n)
 	heath.resize(n)
 	alpine.resize(n)
+	scree.resize(n)
+	scree_col.resize(n)
+	canopy_broad.resize(n)
+	canopy_conifer.resize(n)
 	ground.resize(n)
 
 	# distance to water: two-pass chamfer, carrying the nearest water level along
@@ -323,6 +337,94 @@ func _analyse() -> void:
 			conifer[c] = co
 			heath[c] = he
 			ground[c] = _ground_color(x, z, h, c)
+	_occlusion()
+	_wind()
+
+
+## Horizon occlusion, sampled on every other cell: in 8 directions, the steepest rise
+## of the land within 140 m; the average of sin(angle) is the share of sky hidden.
+func _occlusion() -> void:
+	var n := NA * NA
+	occl.resize(n)
+	var half := (NA + 1) / 2
+	var coarse := PackedFloat32Array()
+	coarse.resize(half * half)
+	var dists := [1.5, 3.5, 7.0, 14.0]   # in cells
+	for hj in half:
+		for hi in half:
+			var i := mini(hi * 2, NA - 1)
+			var j := mini(hj * 2, NA - 1)
+			var h := ha[j * NA + i]
+			var sum := 0.0
+			for d in 8:
+				var best := 0.0
+				for r: float in dists:
+					var si := clampi(i + int(round(DX[d] * r)), 0, NA - 1)
+					var sj := clampi(j + int(round(DZ[d] * r)), 0, NA - 1)
+					var dist := r * A_STEP * (1.4142 if d >= 4 else 1.0)
+					best = maxf(best, (ha[sj * NA + si] - h) / dist)
+				sum += best / sqrt(1.0 + best * best)
+			coarse[hj * half + hi] = sum / 8.0
+	for j in NA:
+		for i in NA:
+			var fx := i * 0.5
+			var fz := j * 0.5
+			var i0 := mini(int(fx), half - 2)
+			var j0 := mini(int(fz), half - 2)
+			var tx := fx - i0
+			var tz := fz - j0
+			var k := j0 * half + i0
+			occl[j * NA + i] = lerpf(lerpf(coarse[k], coarse[k + 1], tx), lerpf(coarse[k + half], coarse[k + half + 1], tx), tz)
+
+
+## Prevailing wind (the grass shader's direction), turned to flow around hills: the
+## part blowing up or down a broad slope is taken out.
+func _wind() -> void:
+	var n := NA * NA
+	wind_x.resize(n)
+	wind_z.resize(n)
+	var base := Vector2(0.8, 0.6).normalized()
+	var broad := _blur(_blur(ha, 8), 8)
+	for j in NA:
+		for i in NA:
+			var c := j * NA + i
+			var g := Vector2(broad[j * NA + mini(i + 1, NA - 1)] - broad[j * NA + maxi(i - 1, 0)],
+				broad[mini(j + 1, NA - 1) * NA + i] - broad[maxi(j - 1, 0) * NA + i]) / (2.0 * A_STEP)
+			var w := base
+			var gl := g.length()
+			if gl > 0.001:
+				var gn := g / gl
+				w -= gn * base.dot(gn) * smoothstep(0.02, 0.15, gl)
+			w = w.normalized() if w.length() > 0.05 else base
+			wind_x[c] = w.x
+			wind_z[c] = w.y
+
+
+## Wind direction at (x, z).
+func wind_at(x: float, z: float) -> Vector2:
+	var w := Vector2(field(wind_x, x, z), field(wind_z, x, z))
+	return w.normalized() if w.length() > 0.01 else Vector2(0.8, 0.6).normalized()
+
+
+## Horizontal direction towards the nearest water.
+func water_dir(x: float, z: float) -> Vector2:
+	var g := Vector2(field(dw, x + A_STEP, z) - field(dw, x - A_STEP, z), field(dw, x, z + A_STEP) - field(dw, x, z - A_STEP))
+	return -g.normalized() if g.length() > 0.01 else Vector2.ZERO
+
+
+## Soil held together by roots: the forest floor sits a little higher than the meadow
+## (up to 0.7 m where the canopy is thickest), except along the road and by water.
+func deform_under_trees() -> void:
+	for j in N:
+		var z := _rx(j)
+		for i in N:
+			var x := _rx(i)
+			var k := j * N + i
+			var cover := clampf(field(canopy_broad, x, z) + field(canopy_conifer, x, z), 0.0, 1.0)
+			if cover <= 0.01:
+				continue
+			var keep := smoothstep(Route.HALF_WIDTH + 4.0, Route.HALF_WIDTH + 14.0, road_d[k]) * smoothstep(6.0, 18.0, field(dw, x, z))
+			heights[k] += 0.7 * cover * keep
 
 
 func _relax(i: int, j: int, ni: int, nj: int, cost: float) -> void:
@@ -340,8 +442,8 @@ func _ground_color(x: float, z: float, h: float, c: int) -> Color:
 	var col := MEADOW.lerp(MEADOW_GOLD, smoothstep(0.35, 0.75, t))
 	col = col.lerp(HEATH, heath[c])
 	col = col.lerp(HEATHER, heath[c] * smoothstep(0.5, 0.7, tint.get_noise_2d(x * 2.7 + 300.0, z * 2.7)))
-	col = col.lerp(LITTER, forest[c] * (1.0 - conifer[c]) * 0.85)
-	col = col.lerp(NEEDLES, forest[c] * conifer[c] * 0.85)
+	col = col.lerp(LITTER, forest[c] * (1.0 - conifer[c]) * 0.4)
+	col = col.lerp(NEEDLES, forest[c] * conifer[c] * 0.4)
 	col = col.lerp(LUSH, wet[c])
 	col = col.lerp(ROCK, alpine[c])
 	col = col.lerp(ROCK_HIGH, smoothstep(250.0, 400.0, h))
@@ -470,7 +572,16 @@ func vertex_color(x: float, z: float, h: float, ny: float, rd: float) -> Color:
 	var wn := field(wnear, x, z)
 	if wn > DRY * 0.5:
 		c = c.lerp(MUD, (1.0 - smoothstep(wn + 0.3, wn + 1.6, h)) * (1.0 - smoothstep(10.0, 30.0, field(dw, x, z))))
-	c = c.lerp(ROCK, 1.0 - smoothstep(0.62, 0.8, ny))
+	# what the trees drop: leaf litter under broadleaves, needles under conifers
+	c = c.lerp(LITTER_FALL, clampf(field(canopy_broad, x, z), 0.0, 1.0) * 0.75)
+	c = c.lerp(NEEDLES, clampf(field(canopy_conifer, x, z), 0.0, 1.0) * 0.7)
+	# rock fall below cliffs keeps the colour of the layer it came from
+	var sc := field(scree, x, z)
+	if sc > 0.01:
+		var k := cell(x, z)
+		c = c.lerp(scree_col[k].darkened(0.08), clampf(sc, 0.0, 1.0) * 0.85)
+	var rock := ROCK if strata == null else strata.color_at(x, h, z)
+	c = c.lerp(rock, 1.0 - smoothstep(0.62, 0.8, ny))
 	c = c.lerp(SNOW_COLOR, smoothstep(SNOW - 40.0, SNOW + 20.0, h + 60.0 * tint.get_noise_2d(x, z)) * smoothstep(0.55, 0.72, ny))
 	c = c.lerp(DIRT, 1.0 - smoothstep(Route.HALF_WIDTH + 0.5, Route.HALF_WIDTH + 2.5, rd))
 	return c

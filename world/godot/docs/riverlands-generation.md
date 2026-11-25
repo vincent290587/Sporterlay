@@ -1,7 +1,7 @@
 # How Riverlands is generated
 
 Riverlands is the second world in the Godot project: an autumn river basin built from a
-seed each time it loads (~4.5 s). No art assets, no external tools. Everything is
+seed each time it loads (~8 s). No art assets, no external tools. Everything is
 GDScript and shaders in this repo. This document covers the pipeline, the logic of each
 step, the parameters that shape it, and the tools used to build and check it.
 
@@ -10,22 +10,38 @@ The code lives in `scripts/worlds/riverlands/` and uses the shared code in
 
 ## Where the approach comes from
 
-The *order* of the steps follows Ubisoft's GDC 2018 talk *Procedural World Generation of
-Far Cry 5* (Etienne Carrier). We worked from public notes on it
-(<https://tools.engineer/toolshed/gdc2018-procedural-world-generation-of-far-cry-5>);
-the slides and video are behind GDC Vault. The notes give this outline:
+The approach follows Ubisoft's GDC 2018 talk *Procedural World Generation of Far Cry 5*
+(Etienne Carrier). We worked from the slides and the talk's transcript (kept locally in
+`world/`, ignored by git, not ours to share) and public notes. From the talk we took:
 
-- analyse the terrain first, and let every later tool read those results;
-- fresh water (rivers, lakes) before vegetation, and cliffs on steep ground;
-- biomes as rule sets ("recipes") that react to terrain features: near water, near
-  cliffs, at high altitude;
-- placement in layers; roads, then fences;
-- determinism: the same input always gives the same world.
+- **order and data flow**: terrain data first; each tool writes masks the next ones read
+  (water → roads → cliffs → biomes);
+- **abiotic data**: occlusion, flow, slope, curvature, illumination (slope aspect),
+  altitude, wind; the pillars of every biome rule;
+- **main biomes split into sub-biomes** (forest, grass) by that data;
+- **species viability**: each species builds its own viability by combining terrain data
+  through ramps, adding noise warped by the terrain normal, and multiplying by exclusion
+  masks; species compete for ground with a **priority radius** checked before a
+  **viability radius**;
+- **age**: a signed distance field into the forest that drives tree size (young at the
+  edges, old in the core, regrowth at a chosen depth), with scale bridging between sizes;
+  smaller, sparser trees up high; density following size;
+- **entities changing the terrain**: soil raised under trees, ground texture and colour
+  under them, and their own masks feeding later species (rocks around conifers);
+- **per-instance colour** from terrain data (rust grass by the water), **rotation** from
+  the slope (grass leaning to water) or a **wind map** that bends around hills;
+- **the cliff tool**: a skin over slopes past a threshold, sliced into strata of random
+  thickness at a few angles, split by a blocky noise into two groups with different
+  seeds, extruded and displaced; strata colour carried onto the terrain; a flow
+  simulation from the cliffs for erosion that keeps the strata colour, with crumbled
+  rocks; vegetation on upward faces that are clear above;
+- **determinism**, and **terrain data computed inside the tools** rather than cached.
 
-Nothing else comes from the talk. Ubisoft used Houdini with hand-authored terrain and
-artist-painted biomes. Here the terrain itself is generated, every step is our own code
-built on standard algorithms (listed with references at the end), and the rule
-thresholds were tuned by eye from screenshots and the top-down map.
+What's different: Ubisoft worked in Houdini on hand-sculpted terrain with artist-painted
+biomes and hand-placed rivers. Here everything is generated, all code is our own GDScript
+built on standard algorithms (references at the end), and the thresholds were tuned by
+eye from screenshots and the top-down map. Their talk gives no numbers for its rules;
+every number here is ours.
 
 ## Pipeline
 
@@ -33,24 +49,30 @@ thresholds were tuned by eye from screenshots and the top-down map.
 flowchart TD
     A[Seed] --> B[1. Base land<br/>warped noise, tilted basin, mountain ring]
     B --> C[2. Fresh water<br/>priority flood, flow accumulation,<br/>valley cutting, silt, rivers, lakes]
-    C --> D[3. Analysis maps<br/>slope, concavity, sun, moisture,<br/>distance to water]
-    D --> E[4. Biome fields<br/>forest, conifer, wetland, heath, alpine]
+    C --> D[3. Abiotic maps<br/>slope, concavity, sun, occlusion, wind,<br/>moisture, distance to water]
+    D --> E[4. Biome fields<br/>forest, wetland, heath, alpine]
     E --> F[5. Road<br/>waypoints, A*, spur removal,<br/>smoothing, grade cap, bridges]
-    F --> G[6. Render terrain<br/>5 m grid, road carved in, colours, skirt]
-    G --> H[7. Scatter in layers<br/>cliffs, trees, undergrowth, reeds,<br/>grass, flowers]
-    H --> I[8. Built things<br/>bridges, fences]
+    F --> G[6. Render heights<br/>5 m grid, road carved in]
+    G --> H[7. Cliffs<br/>strata, rock fall to scree]
+    H --> I[8. Trees<br/>species viability, competition, age,<br/>canopy maps, raised forest floor]
+    I --> J[Meshes<br/>ground, cliff skin, road, water]
+    J --> K[9. Understory<br/>bushes, ferns, rocks, logs, scree rubble,<br/>boulders, ledge plants]
+    K --> L[10. Ground cover<br/>grass, reeds, flowers]
+    L --> M[11. Built things<br/>bridges, fences]
 ```
 
 | Step | Code | Typical time |
 |---|---|---|
-| 1-2 Base land, water | `RiverLand.build()` | ~0.45 s |
-| 3-4 Maps, biomes | `RiverLand._analyse()` | ~0.25 s |
-| 5 Road | `RiverRoad.plan()`, `Route.build_loop()` | ~0.45 s |
-| 6 Terrain and water meshes | `RiverLand.make_heights()`, `carve()`, `build_mesh()`, `water_mesh()` | ~0.85 s |
-| 7 Trees and big props | `RiverScenery._cliffs()`, `_trees()`, `_undergrowth()` | ~1.2 s |
-| 7-8 Small props, built things | `_reeds()`, `_grass()`, `_bridges()`, `_fences()` | ~1.3 s |
+| 1-4 Land, water, maps, biomes | `RiverLand.build()` | ~0.8 s |
+| 5 Road | `RiverRoad.plan()`, `Route.build_loop()` | ~0.3 s |
+| 6 Render heights | `RiverLand.make_heights()`, `carve()` | ~0.4 s |
+| 7 Rock fall | `RiverCliffs.simulate_scree()` | ~0.3 s |
+| 8 Trees | `RiverEcology.place_trees()`, `build_trees()` | ~0.9 s |
+| Meshes | `RiverLand.build_mesh()`, `RiverCliffs.build_skin()`, `water_mesh()` | ~2.3 s |
+| 9 Understory | `RiverEcology.build_understory()` | ~1.9 s |
+| 10-11 Ground cover, built things | `RiverScenery._reeds()`, `_grass()`, `_bridges()`, `_fences()` | ~1.3 s |
 
-Times are from the Linux dev box (seed 7). Each step prints its time to the console.
+Times are from the Linux dev box (seed 7, ~8.2 s in all). Each step prints its time.
 
 ## Coordinates and grids
 
@@ -147,6 +169,8 @@ the banks and the shoreline is wherever the two cross.
 | `dw` | distance to water in m | two-pass chamfer distance transform (10 m / 14.1 m steps) |
 | `wnear` | level of the nearest water | carried along by the same chamfer passes |
 | `moist` | 0 dry … 1 wet | 0.55 × e^(−dw/45) + 0.3 × ln(acc)/7 + concavity/15 (clamped ±0.3) |
+| `occl` | share of the sky hidden by the land around, 0…1 | in 8 directions, the steepest rise within 15-140 m; average of sin(angle). Computed on every other cell and interpolated (`_occlusion()`) |
+| `wind_x/z` | wind direction | the prevailing wind (the grass shader's), minus its component along the broad slope (height blurred over ±160 m), so it flows around hills (`_wind()`) |
 
 The sun direction is the same one the scene's light uses (`SUN_PITCH`, `SUN_YAW`), so
 dry, sun-facing slopes are the ones that look lit.
@@ -164,7 +188,8 @@ straight edges. `smoothstep(a, b, x)` ramps from 0 at `a` to 1 at `b`.
 | `conifer` | smoothstep(60, 190 m, height) + 0.9 × (0.45 − sun) + noise | share of conifers: high or shady |
 | `heath` | smoothstep(0.7, 0.95, sun + 0.3·(1 − moist) − 0.03·conc) × (1 − forest)(1 − alpine)(1 − wet) | dry, sunny, convex |
 
-Meadow is whatever is left. These are the "recipes" from the talk, written as formulas.
+Meadow is whatever is left. `forest` is the forest **sub-biome**: it says where woods
+may grow. Which trees, how big and how dense is decided per species in step 8.
 
 ### Ground colour
 
@@ -174,7 +199,10 @@ forest, needles under conifers, lush green for wetland, rock, grey rock higher u
 
 Per render vertex, `vertex_color()` adds:
 - mud just above nearby water (within 1.6 m of its level, fading out by 30 m away);
-- rock on steep faces;
+- fresh leaf litter under broadleaf crowns and needles under conifers (canopy maps, step 8);
+- scree in the colour of the cliff layer it fell from (step 7);
+- on steep faces, the colour of the rock layer there (step 7), so cliffs keep their bands
+  even where the cliff skin isn't drawn;
 - snow above ~600 m;
 - dirt along the road edge.
 
@@ -232,47 +260,109 @@ Steepest 2 m step on both worlds' roads (seed 7): 7.50 %.
    road; from there it blends back to the natural height by 48 m, giving cuttings and
    embankments. Points within 4-14 m of water are left alone, so the river stays open
    under bridges.
-3. `build_mesh()`: the grid plus the skirt in one mesh, with vertex normals and colours.
+3. After the trees (step 8), `deform_under_trees()` raises the ground up to 0.7 m where
+   the canopy is thickest (roots hold the soil), except along the road and by water.
+4. `build_mesh()`: the grid plus the skirt in one mesh, with vertex normals and colours.
 
-## 7. Scatter in layers
+## 7. Cliffs (`RiverCliffs`)
 
-`RiverScenery.build()`. Every layer:
+**Strata** (`setup()`): two independent stacks of rock layers from −300 m to 1200 m, each
+layer 1.2-4.5 m thick with its own depth (how far it sticks out, 0-1.4 m) and colour
+(sandstone, grey, reddish, dark, pale). A point's layer is found by binary search on
+`height + dip · (x, z)`, where the dip is one of three (flat, two tilts) chosen by a slow
+regional noise. A blocky value noise (35 m cells) picks which stack, so layer lines break
+off and restart offset.
 
-1. takes candidate points from a jittered grid (`_candidates(spacing)`);
-2. keeps each with a probability from the biome fields;
-3. checks the spot is dry and off the road (`_dry()`);
-4. for the bigger props, checks the spot against **footprints**: circles left by
-   earlier, bigger props, kept in a 12 m spatial hash (`Footprints`).
+**Rock fall** (`simulate_scree()`), on the analysis grid: every cell steeper than 0.24
+that isn't water sends 3 particles downhill, each step to the lowest neighbour (35 % of
+the time the second lowest, so fans spread), up to 40 steps, stopping at water or where
+the slope drops under 0.06. Each visited cell gets a weight (falling with distance) and
+the particle's layer colour. The result, blurred once and kept off the cliffs themselves,
+is `scree` (0…1) and `scree_col`.
 
-Layers run biggest first, so small things fill in around big ones, never the other way.
+**Skin** (`build_skin()`): every render quad with a corner steeper than normal.y 0.77
+(about 40°), away from road and water, is split 2×2. Each vertex is pushed out along the
+slope's horizontal direction by `cliffness × (0.3 + layer depth + crag noise × 0.5) + 0.12`
+m, where cliffness ramps from 0 at normal.y 0.77 to 1 at 0.68, so the skin melts into the
+ground at its edges. Colour blends from the ground colour to the layer colour by
+cliffness. The mesh is faceted (flat normals) for crisp, toon-lit rock.
 
-| Layer | Spacing | Chance | Footprint | Notes |
+**Ledges** (`_find_ledges()`): faces of the skin pointing up (normal.y ≥ 0.8), standing
+out from the ground, where the layer 1.5 m above doesn't stick out further (nothing
+overhangs). 35 % of them get a small bush.
+
+## 8. Trees (`RiverEcology`)
+
+**Exclusions** (`_exclusions()`), 1 = fine, 0 = nothing grows: within 4-9 m of water,
+cliffs (slope 0.24-0.3), scree, runoff lines on steep slopes (slope 0.12-0.25 where
+ln(flow) is 4.5-7), and dry south faces (−60 % where sun is 0.75-0.95 on slopes).
+
+**Viability** per species (`_viabilities()`), on the analysis grid, each times its own
+noise (`0.75 + 0.5 × noise`, sampled at a point shifted by the terrain gradient, so
+patches stretch along slopes) and times the exclusions:
+
+| Species | Viability |
+|---|---|
+| Broadleaf | forest × (0.45 + 0.6·moist + 0.5·occlusion) × (1 − ramp(height 120 → 220 m)) |
+| Spruce | forest × (ramp(height 60 → 180 m) + 1.2·(0.5 − sun) + 0.3·occlusion) |
+| Pine | forest × (0.5·ramp(height 20 → 120 m) + 0.6·ramp(sun 0.5 → 0.8) + 0.5·ridge) |
+| Birch | (0.5·forest + 0.25) × (1.2·e^(−dw/40) + 0.3·(1 − forest)) |
+
+**Age** (`_age()`): cells where the best viability is over 0.28 are forest. Age is the
+signed chamfer distance to the forest edge: positive inside, negative outside.
+
+**Candidates and competition** (`place_trees()`): a jittered 4 m grid. Each candidate
+takes the species with the highest viability there; below 0.28 it's dropped, except a
+0.4 % chance of a lone birch or broadleaf in the open. Candidates are visited from the
+most viable down (counting sort). A candidate is dropped if it stands inside the
+viability radius of a tree already placed, which by the visiting order is a stronger
+one.
+
+**Size**: `t = lerp(relative viability, age / 25 m, 0.7)`, reduced up to 45 % between
+120 and 300 m of altitude. In the regrowth band (12-20 m inside the forest) half the trees
+get a small `t`. `t` picks one of five sizes (0.6, 0.75, 0.9, 1.05, 1.25), then ±10 %
+bridges the steps. The viability radius is 6 m × size, so big old trees keep more room
+and young edges grow denser. That's the talk's density ramp.
+
+**Dead trees**: 4 % of trees deeper than 21 m into the forest.
+
+**Canopy** (`_canopy()`): each crown (0.6 × size) is added to its cell in
+`canopy_broad` or `canopy_conifer`, blurred once, scaled ×1.5 and clamped. These drive
+the ground colour, the raised forest floor and the understory.
+
+**Rendering**: one `Instancer` per species and colour (broadleaf in four autumn
+palettes picked by a hue noise plus a random nudge, so colours come in patches with
+strays), full meshes to 450 m and one-blob/one-cone versions to 2.2 km.
+
+## 9. Understory (`RiverEcology.build_understory()`)
+
+Each layer works out its chance once per 10 m cell; the cell gets that share of the
+`spacing`-sized spots that fit in it, at random positions. A plant must be clear of tree
+trunks by their **priority radius** (1 m × tree size), so understory grows close to
+trunks, and clear of other understory by its own radius.
+
+| Layer | Spacing | Chance | Radius | Notes |
 |---|---|---|---|---|
-| Cliff rocks | 11 m | smoothstep(0.22, 0.4, slope) | 0.45 × size (5-10 m) | Tilted halfway between the slope and upright; faceted with strata bands |
-| Trees | 7.5 m | 0.9 × forest + small chance for lone trees | 2.4 m | Species picked per tree, see below |
-| Bushes | 3.5 m | 0.35 × forest edge + 0.2 × wet + 0.08 × heath + 0.04 × forest | 1.0 m | Forest edge = 4·f·(1 − f): highest where the forest thins out |
-| Logs and stumps | 14 m | 0.35 × forest | 1.8 m | 60 % logs |
-| Boulders | 16 m | 0.05 + 0.35 × alpine + 0.15 × heath | 1.5 m | Size 0.8-3.5 m |
-| Reeds | 4 per cell within 15 m of water | at shore height: 0.7 m under to 0.9 m above the nearest water | none | Some with cattail heads; not in the outer 300 m |
-| Grass | 110 per 2 m of road, out to 110 m | 1 − 0.7 × forest − 0.85 × alpine (≥ 0.1) | none | Colour = biome ground colour |
-| Wildflowers | with the grass | 6 % × meadow | none | White, yellow, purple |
+| Bushes | 3 m | 0.6 × forest edge band (age −14…16 m) + 0.3 × wet + 0.08 × heath | 1.1 m | Autumn tints, 45 % green |
+| Ferns | 2.2 m | canopy × (0.3 + moist) × (0.6 + occlusion) × 0.55 | 0.7 m | Grass shader (sways); gold, rust, green |
+| Mossy rocks | 6 m | 0.35 × conifer canopy | 1.2 m | The conifers' canopy map is their viability; tilted 80 % to the slope |
+| Logs and stumps | 12 m | 0.4 × ramp(age 10 → 25 m) | 1.8 m | Old forest; logs lie on the slope |
+| Crumbled rock | 3 m | 0.55 × scree | 0.6 m | Tinted with the scree colour |
+| Boulders | 16 m | 0.04 + 0.3 × alpine + 0.12 × heath | 1.5 m | Tilted 60 % to the slope |
+| Ledge plants | per ledge | 35 % | none | Small bushes on the cliff skin |
 
-**Tree species**, per tree:
-1. With probability `conifer`: pine or spruce (50/50).
-2. Otherwise, a birch if within 60 m of water (45 %) or at the thin edge of a forest
-   (30 %).
-3. Otherwise a broadleaf. Its colour (green, yellow, orange or red) comes from a slow
-   noise plus a random nudge, so colours come in patches with strays, like a real
-   autumn wood.
+## 10. Ground cover (`RiverScenery`)
 
-**Rendering**: each species goes into an `Instancer` (`common/instancer.gd`): instances
-are grouped into square chunks (200 m for trees, 64 m for bushes, 32 m for grass), one
-MultiMesh per chunk, so the GPU culls whole chunks. Trees have two levels of detail:
-full meshes out to 450 m and one-blob/one-cone versions from 450 m to 2.2 km. Grass
-shrinks into the ground between 65 and 110 m in its shader, so its 125 m cut-off never
-pops.
+- **Reeds** at the shore (0.7 m under to 0.9 m above the nearest water, within 15 m of
+  it), tipping towards the water.
+- **Grass** along the road (110 clumps per 2 m of road, out to 110 m), thinner in forest
+  and rock. Its colour is the biome ground colour, turned rust in wetland 8-20 m from the
+  water. Every blade tips the same way (a lean built into the mesh), and the clump is
+  turned to lean **towards the water** within 25 m of it and **with the wind map**
+  elsewhere.
+- **Wildflowers** with the grass: 6 % × meadow; white, yellow, purple.
 
-## 8. Built things
+## 11. Built things
 
 - **Bridges** (`_bridges()`): side beams under the deck edges, posts every 4 m, a top rail,
   and piers every 12 m down to the ground or river bed wherever the deck is over a metre
@@ -287,14 +377,21 @@ All of these are boxes from `_beam()`, merged into one mesh.
 
 ## Determinism and seeds
 
-Everything comes from `--seed` (default 7): the noise generators are seeded from it
-(`seed`, `seed + 1`, …), the outlet direction and waypoints from their own
-`RandomNumberGenerator`s, and the scatter from one generator seeded `seed + 100`.
+Everything comes from `--seed` (default 7). Each tool has its own generators, so a
+change in one doesn't reshuffle the others:
 
-The scatter's generator is shared across layers, so **the order of draws matters**.
-Adding a draw early (for example a new layer before the trees) shifts every later
-layer's choices. The world is still valid, just different. Add new layers at the end,
-or give them their own generator, to keep existing seeds looking the same.
+| Seed | Used by |
+|---|---|
+| `seed` … `seed + 5` | land noises (hills, detail, warp, ridges, patches, tint); outlet direction |
+| `seed + 31` | road waypoints |
+| `seed + 50` … `+ 54` | cliff strata, split, region, crag noises, rock fall |
+| `seed + 100` | ecology: tree candidates, sizes, understory |
+| `seed + 200` … `+ 203`, `+ 210` | species viability noises, broadleaf hue |
+| `seed + 300` | ground cover, fences |
+
+Within one generator **the order of draws matters**: adding a layer early shifts every
+later choice of that generator. The world is still valid, just different. Add layers
+at the end, or give them their own generator, to keep existing seeds looking the same.
 
 ## Tools
 
@@ -338,26 +435,32 @@ and prints the steepest 2 m step was used. It isn't kept in the repo.
 | More or fewer rivers | `RIVER_ACC` (lower = more, smaller streams) |
 | Deeper valleys | the 3.2 and the 24 m cap in the valley-cutting formula |
 | Hillier land | hill amplitude (80 m) in `base()`; the road then needs more cut and fill |
-| More forest | the −0.12 in the `forest` rule (lower = more) |
-| More conifers | the 60-190 m band or the 0.9 sun weight in `conifer` |
+| More forest | the −0.12 in the `forest` rule (lower = more), `FOREST_EDGE` in `river_ecology.gd` |
+| Which tree where | the species rows in `_viabilities()` |
+| Bigger or sparser trees | `SIZES`, `TREE_RADIUS` (spacing per size), `AGE_DEPTH` (how fast trees grow into the forest) |
+| Thicker forest edges | the bush band on `age`, `REGROWTH` |
+| More or less cliff | `CLIFF_NY_START` / `CLIFF_NY_FULL`, layer thickness and depth ranges in `setup()` |
+| Longer scree | particles per cell, step limit (40) and the stop slope (0.06) in `simulate_scree()` |
 | Road avoids rivers more | the `14·L` water cost in `_astar()` |
 | Flatter road | the `400·g²` grade cost, and `Route.MAX_GRADE` |
-| Autumn colours | `GREEN`, `YELLOW`, `ORANGE`, `RED`, `BIRCH`, `BUSH_TINTS` in `river_scenery.gd` |
+| Autumn colours | palettes at the top of `river_ecology.gd` |
 | Light and haze | the `Look.apply()` overrides in `river_world.gd` |
-| Performance | `GRASS_PER_SAMPLE`, tree spacing (7.5 m), `TREE_DETAIL`, `TREE_VISIBLE` |
+| Performance | `GRASS_PER_SAMPLE`, fern and bush spacing, `TREE_RADIUS`, `TREE_DETAIL`, `TREE_VISIBLE` |
 
 ## Known limitations
 
 - Rivers are on the 10 m grid, so they're at least ~10 m wide and their courses step
   slightly. A finer water mesh or a river spline would fix it.
-- The rider's camera can pass close to a tree trunk on a bend: trees keep 4 m from the
-  road edge, and the camera sits 1 m right of centre.
-- Grass right beside the road can be more golden than the ground under it, because the
-  ground there blends to road dirt at the render grid's 5 m spacing.
+- The cliff skin is built on the 5 m ground grid split 2×2, so strata steps are ~2.5 m
+  apart; thin layers show as colour more than as shape.
+- The raised forest floor is on the 5 m grid: it lifts whole woods gently, not the
+  ground around each trunk.
+- The rider's camera can pass close to a tree trunk on a bend.
 - Some seeds may still give an odd road (a long detour, a crossing over itself). Check
   the map.
-- Not yet measured on the Windows ride PC: about 250k grass clumps, 12k trees and 80k
-  bushes.
+- About 34k trees, 130k understory props, 100k ferns and 200k grass clumps (seed 7).
+  Chunks and distance limits keep the drawn share small, but it hasn't been measured on
+  the Windows ride PC yet. Generation takes ~8 s.
 
 ## References
 

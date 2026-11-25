@@ -6,7 +6,7 @@ seed when a world loads, so there are no art assets in the repo.
 | World | `--world=` | What | Build time |
 |---|---|---|---|
 | Valley | `valley` | Green valley, snowy mountain ring, a wobbly loop. Pure noise. | ~1.6 s |
-| Riverlands | `riverlands` | Autumn river basin shaped by simulated water, biomes from terrain analysis, a planned road with bridges and fences | ~4.5 s |
+| Riverlands | `riverlands` | Autumn river basin shaped by simulated water, layered cliffs and scree, forests of competing species, a planned road with bridges and fences | ~8 s |
 
 F2 switches to the next world while riding.
 
@@ -28,11 +28,14 @@ freshwater, then rule-based biomes and layered placement):
 5. **Road** (`RiverRoad`): A* between waypoints around the basin, paying for grade²,
    rough ground and water crossings; spurs and hairpins cut, smoothed, grade capped.
    Bridges where it crosses water.
-6. **Scatter** (`RiverScenery`), biggest first, each layer keeping clear of earlier
-   footprints: cliff rocks on steep ground, trees (patches of autumn colour, birches
-   by water, conifers up high), bushes thickest at forest edges, logs and stumps in
-   the woods, boulders; then reeds at the shore, grass and wildflowers along the road;
-   then bridges and fences through open meadow.
+6. **Cliffs** (`RiverCliffs`): a skin of rock layers over steep ground, the layer
+   colours carried onto the terrain, rock fall leaving coloured scree, plants on ledges.
+7. **Trees** (`RiverEcology`): each species' viability from the terrain maps; species
+   compete for ground; size from age (young at forest edges, old in the core); the
+   canopy colours and raises the forest floor.
+8. **Understory and ground cover**: bushes at forest edges, ferns in the shade, mossy
+   rocks by conifers, logs in old forest, rubble on scree; grass combed by the wind and
+   leaning to water, reeds, flowers; then bridges and fences.
 
 `--map=out.png` saves a top-down picture of the biomes, water and road.
 
@@ -87,7 +90,7 @@ isn't needed.
 | `scripts/main.gd` | Picks and builds a world, status line, options, keys |
 | `scripts/common/` | Shared: `PowerLink` (UDP), `Rider` (physics, camera), `Route` (road from a rough loop, grade cap), `Roads` (road surface), `Look` (sky, fog, sun), `Instancer` (chunked instances, LOD), `MeshBuilder`, `Meshes` (props), `MinHeap` |
 | `scripts/worlds/valley/` | `ValleyWorld`, `ValleyTerrain`, `ValleyScenery` |
-| `scripts/worlds/riverlands/` | `RiverWorld`, `RiverLand` (terrain, water, maps, biomes), `RiverRoad` (A*), `RiverScenery` (layers, bridges, fences) |
+| `scripts/worlds/riverlands/` | `RiverWorld`, `RiverLand` (terrain, water, maps, biomes), `RiverRoad` (A*), `RiverCliffs` (strata skin, scree, ledges), `RiverEcology` (species, competition, age, understory), `RiverScenery` (order, ground cover, bridges, fences) |
 | `shaders/` | Shared toon lighting (`toon.gdshaderinc`), ground/props, grass, water, sky |
 
 A new world is a class with `route` and `build(parent, seed)`, registered in
