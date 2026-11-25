@@ -173,9 +173,16 @@ func _viabilities(seed: int) -> void:
 				* (0.75 + 0.5 * (noises[1] as FastNoiseLite).get_noise_2d(x + nx, z + nz)) * e
 			# pine: drier, sunnier, convex ground
 			vp[c] = (forest * (0.5 * ramp(h, 20.0, 120.0) + 0.6 * ramp(sun, 0.5, 0.8) + 0.5 * ridge) \
-				+ land.heath[c] * 0.33) \
+				+ land.heath[c] * 0.33 * (1.0 - ramp(land.slope[c], 0.08, 0.16))) \
 				* (0.75 + 0.5 * (noises[2] as FastNoiseLite).get_noise_2d(x + nx, z + nz)) * e
-			# (the heath term: an open pine woodland on dry, sunny ground, so heath isn't bare)
+			# (the heath term: an open pine woodland on dry, sunny ground, so heath isn't
+			# bare; only where it's gentle enough to stand on, under ~30°)
+			# trees other than the twisted ones keep off steep ground (32-38°)
+			var upright := 1.0 - ramp(land.slope[c], 0.15, 0.21)
+			vb[c] *= upright
+			vp[c] *= upright
+			vs[c] *= upright
+			vbi[c] *= upright
 			# birch: near water, thin woods
 			vbi[c] = (forest * 0.5 + 0.25) * (1.2 * wet + 0.3 * (1.0 - forest)) \
 				* (0.75 + 0.5 * (noises[3] as FastNoiseLite).get_noise_2d(x + nx, z + nz)) * e
@@ -262,7 +269,7 @@ func place_trees(seed: int) -> void:
 					best = k
 			# the odd lone tree out in the meadow
 			if bv < FOREST_EDGE:
-				if exclude[c] < 0.5 or rng.randf() > 0.004:
+				if exclude[c] < 0.5 or land.slope[c] > 0.15 or rng.randf() > 0.004:
 					continue
 				best = BIRCH_TREE if rng.randf() < 0.5 else BROAD
 				bv = FOREST_EDGE
@@ -307,12 +314,15 @@ func place_trees(seed: int) -> void:
 			species = DEAD
 		placed.append([cand.x, cand.y, species, scale, hue.get_noise_2d(cand.x, cand.y)])
 	var per := {}
+	var steep := {}   # trees on ground steeper than ~33° (slope > 0.16)
 	for p: Array in placed:
 		per[int(p[2])] = per.get(int(p[2]), 0) + 1
+		if land.field(land.slope, p[0], p[1]) > 0.16:
+			steep[int(p[2])] = steep.get(int(p[2]), 0) + 1
 	var names := {BROAD: "broadleaf", PINE: "pine", SPRUCE: "spruce", BIRCH_TREE: "birch", DEAD: "dead", TWISTED: "twisted"}
 	var parts := []
 	for k in per:
-		parts.append("%s %d" % [names[k], per[k]])
+		parts.append("%s %d (%d steep)" % [names[k], per[k], steep.get(k, 0)])
 	print("  trees chosen: %d in %d ms (%s)" % [placed.size(), Time.get_ticks_msec() - t, ", ".join(parts)])
 	_canopy()
 	land.deform_under_trees()

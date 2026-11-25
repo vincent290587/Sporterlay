@@ -334,9 +334,14 @@ patches stretch along slopes) and times the exclusions:
 |---|---|
 | Broadleaf | forest × (0.45 + 0.6·moist + 0.5·occlusion) × (1 − ramp(height 120 → 220 m)) |
 | Spruce | forest × (ramp(height 60 → 180 m) + 1.2·(0.5 − sun) + 0.3·occlusion) |
-| Pine | forest × (0.5·ramp(height 20 → 120 m) + 0.6·ramp(sun 0.5 → 0.8) + 0.5·ridge) + 0.33·heath (an open pine woodland on the heath) |
+| Pine | forest × (0.5·ramp(height 20 → 120 m) + 0.6·ramp(sun 0.5 → 0.8) + 0.5·ridge) + 0.33·heath × (1 − ramp(slope 0.08 → 0.16)) (an open pine woodland on gentle heath) |
 | Birch | (0.5·forest + 0.25) × (1.2·e^(−dw/40) + 0.3·(1 − forest)) |
 | Twisted (MegaKit) | (0.25 + 0.5·forest) × (0.3 + 0.9·ramp(slope 0.08 → 0.2) + 0.6·ridge) × (1 − ramp(height 220 → 320 m)) × (1 − 0.7·e^(−dw/40)) |
+
+All species but the twisted trees are then multiplied by `1 − ramp(slope 0.15 → 0.21)`:
+trees keep off ground steeper than about 32-38°, which is left to the twisted trees, the
+cliffs and the scree. Lone trees in the open need a slope under 0.15 too. The log reports
+each species' count and how many stand on steep ground (slope > 0.16).
 
 **Age** (`_age()`): cells where the best viability is over 0.28 are forest. Age is the
 signed chamfer distance to the forest edge: positive inside, negative outside.
