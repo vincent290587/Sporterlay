@@ -183,9 +183,13 @@ func natural(x: float, z: float) -> float:
 		var half := canyon_half(u) + rim.get_noise_2d(x, z) * 4.0
 		var t := clampf((d - half) / 120.0, 0.0, 1.0)
 		var wall := WALL * (0.85 + 0.3 * (tint.get_noise_2d(x * 0.3, z * 0.3) * 0.5 + 0.5)) * _terrace(t)
-		# by the ruins the right-hand wall opens to the sun
+		# by the ruins the right-hand wall opens to the sun, and the left one the
+		# temple is cut into rises sheer
 		if sd > 0.0:
 			wall *= smoothstep(PLAZA - 20.0, PLAZA + 80.0, u)
+		else:
+			var sheer := 1.0 - smoothstep(PLAZA - 40.0, PLAZA + 10.0, u)
+			wall = lerpf(wall, WALL * 1.15 * smoothstep(0.0, 0.06, t), sheer)
 		top = maxf(top, wall * inside)
 	h += top
 	var far := smoothstep(2400.0, 4800.0, Vector2(x, z).length())
@@ -248,14 +252,16 @@ func _dig(c: Vector2, radius: float, depth: float) -> void:
 			heights[k] -= depth * f
 
 
-func flatten(inside: Callable, h: float, edge: float) -> void:
+## Levels a footprint to `target(x, z)`, blending out over `edge` m.
+func flatten(inside: Callable, target: Callable, edge: float) -> void:
 	for j in N:
 		var z := -HALF + j * STEP
 		for i in N:
-			var d: float = inside.call(-HALF + i * STEP, z)
+			var x := -HALF + i * STEP
+			var d: float = inside.call(x, z)
 			if d < edge:
 				var k := j * N + i
-				heights[k] = lerpf(h, heights[k], smoothstep(0.0, edge, d))
+				heights[k] = lerpf(target.call(x, z), heights[k], smoothstep(0.0, edge, d))
 
 
 func _sample(a: PackedFloat32Array, x: float, z: float, outside: float) -> float:

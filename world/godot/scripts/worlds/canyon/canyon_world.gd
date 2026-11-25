@@ -23,6 +23,9 @@ func build(parent: Node3D, seed: int) -> void:
 	land.hollows.append([oasis.centre2, CanyonOasis.BASIN, CanyonOasis.DEPTH])
 	land.greens.append([oasis.centre2, CanyonOasis.BASIN * 0.95])
 	land.carve(route)
+	var ruins := CanyonRuins.new()
+	ruins.setup(route, ruins_s, seed)
+	ruins.level(land)
 
 	# the sun low on the plaza's open side, so its light falls on the carved facade
 	var right := route.right_at(ruins_s)
@@ -46,8 +49,9 @@ func build(parent: Node3D, seed: int) -> void:
 		"saturation": 1.12,
 		"shadow_distance": 700.0,
 	})
-	CanyonScenery.build(parent, land, route, seed, oasis.blocks)
+	CanyonScenery.build(parent, land, route, seed, func(x: float, z: float) -> bool: return oasis.blocks(x, z) or ruins.blocks(x, z))
 	oasis.build(parent, land)
+	ruins.build(parent)
 
 
 func _nearest_s(p: Vector2) -> float:
