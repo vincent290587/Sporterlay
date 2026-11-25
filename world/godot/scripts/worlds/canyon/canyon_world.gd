@@ -52,6 +52,7 @@ func build(parent: Node3D, seed: int) -> void:
 	CanyonScenery.build(parent, land, route, seed, func(x: float, z: float) -> bool: return oasis.blocks(x, z) or ruins.blocks(x, z))
 	oasis.build(parent, land)
 	ruins.build(parent)
+	CanyonBirds.build(parent, route, ruins_s, oasis_s, seed)
 
 
 func _nearest_s(p: Vector2) -> float:
