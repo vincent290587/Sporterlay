@@ -102,6 +102,9 @@ Golden hour in red-rock desert. `scripts/worlds/canyon/`:
 - **`CanyonScenery`**: junipers, sagebrush, dead trees, desert grass,
   boulders fallen at the foot of cliffs. **`CanyonBirds`**: vultures circling high,
   flown by the bats' shader with slow, shallow wingbeats.
+- **`CanyonCacti`**: saguaros (ribbed trunks, arms that bend up, some in bloom),
+  barrel cacti with a crown of flowers, prickly pear clumps with magenta fruit, over
+  the open desert out to ~360 m from the road (none in the canyon or the oasis).
 - **`CanyonRocks`**: hoodoo gardens near the road, lone stepped spires out in the
   desert, and a natural arch the road passes under (`ARCH_AT`).
 - **`canyon_ground.gdshader`**: detail painted in world space, fading with distance:

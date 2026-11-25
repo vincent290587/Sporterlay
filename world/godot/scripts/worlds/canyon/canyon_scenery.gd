@@ -33,6 +33,7 @@ static func build(parent: Node3D, land: CanyonLand, route: Route, seed: int, blo
 	_plants(parent, land, rng, toon, blocked)
 	_rocks(parent, land, rng, toon, blocked)
 	_grass(parent, land, route, rng, blocked)
+	CanyonCacti.build(parent, land, route, seed, blocked)
 
 
 static func _mesh(parent: Node3D, mesh: Mesh, mat: Material, shadows: bool) -> void:
