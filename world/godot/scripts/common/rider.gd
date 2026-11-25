@@ -35,6 +35,12 @@ func _ready() -> void:
 	camera.make_current()
 
 
+## Forget the camera's smoothing, for a jump to another road.
+func reset() -> void:
+	_placed = false
+	grade = 0.0
+
+
 func _integrate(watts: float, dt: float) -> void:
 	# m dv/dt = P/v - m g (sin a + Crr cos a) - 1/2 rho CdA v^2
 	var a := atan(grade / 100.0)

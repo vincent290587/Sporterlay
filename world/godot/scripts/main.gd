@@ -1,49 +1,47 @@
 extends Node3D
-## Sporterlay World: a stylized valley ride driven by power from Sporterlay.
+## Sporterlay World: stylized rides driven by power from Sporterlay.
 ##
 ## Command line (after `--` when run from the editor binary):
 ##   --port=47810   UDP port Sporterlay sends power to
-##   --seed=7       which world to generate
+##   --world=valley which world: valley, riverlands
+##   --seed=7       which variant of it to generate
 ##   --power=200    fixed power when Sporterlay isn't sending (testing)
 ##   --at=1200      start this many metres along the road
 ##   --shot=path.png [--frames=90]  save a screenshot and quit
-## Keys: Esc quit, H hide the text, F11 fullscreen, Up/Down manual power without Sporterlay.
+##   --map=path.png  save a top-down biome map (worlds that have one)
+## Keys: Esc quit, H hide the text, F11 fullscreen, F2 next world,
+## Up/Down manual power without Sporterlay.
 
-var terrain := Terrain.new()
-var route := Route.new()
+var worlds := {"valley": ValleyWorld, "riverlands": RiverWorld}
+
+var world_name := "valley"
+var seed := 7
+var world_node: Node3D
 var link := PowerLink.new()
 var rider := Rider.new()
 var hud := Label.new()
 var manual_power := 0.0
+var args := {}
 var _shot := ""
 var _shot_frames := 90
 var _frame := 0
 
 
 func _ready() -> void:
-	var args := _args()
-	var seed := int(args.get("seed", "7"))
+	args = _args()
+	seed = int(args.get("seed", "7"))
+	world_name = args.get("world", "valley")
+	if not worlds.has(world_name):
+		push_warning("unknown world %s" % world_name)
+		world_name = "valley"
 	manual_power = float(args.get("power", "0"))
 	_shot = args.get("shot", "")
 	_shot_frames = int(args.get("frames", "90"))
 
-	var t0 := Time.get_ticks_msec()
-	terrain.setup(seed)
-	route.build(seed, terrain)
-	terrain.carve(route)
-	_environment()
-	var world := Node3D.new()
-	world.name = "World"
-	add_child(world)
-	Scenery.build(world, terrain, route, seed)
-	print("world %d: road %.2f km, built in %d ms" % [seed, route.length / 1000.0, Time.get_ticks_msec() - t0])
-
 	link.port = int(args.get("port", "47810"))
 	add_child(link)
-	rider.route = route
-	rider.distance = float(args.get("at", "0"))
 	add_child(rider)
-	rider.advance(0.0, 0.0)
+	_load_world(float(args.get("at", "0")))
 
 	var layer := CanvasLayer.new()
 	add_child(layer)
@@ -60,50 +58,32 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
 
 
-func _environment() -> void:
-	var sky_mat := ShaderMaterial.new()
-	sky_mat.shader = load("res://shaders/sky.gdshader")
-	var sky := Sky.new()
-	sky.sky_material = sky_mat
-	sky.radiance_size = Sky.RADIANCE_SIZE_64
-	sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL
-	var env := Environment.new()
-	env.background_mode = Environment.BG_SKY
-	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.62, 0.70, 0.86)
-	env.ambient_light_energy = 0.55
-	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
-	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-	env.fog_enabled = true
-	env.fog_light_color = Color(0.70, 0.80, 0.93)
-	env.fog_density = 0.00032
-	env.fog_aerial_perspective = 0.3
-	env.fog_sky_affect = 0.0
-	env.glow_enabled = true
-	env.glow_intensity = 0.4
-	env.glow_hdr_threshold = 1.0
-	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.08
-	var we := WorldEnvironment.new()
-	we.environment = env
-	add_child(we)
-
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-38.0, -35.0, 0.0)
-	sun.light_color = Color(1.0, 0.96, 0.88)
-	sun.light_energy = 1.15
-	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 220.0
-	sun.shadow_blur = 1.5
-	add_child(sun)
+## Builds the chosen world under a fresh node (the old one, if any, is freed).
+func _load_world(at: float) -> void:
+	if world_node:
+		world_node.free()
+	world_node = Node3D.new()
+	world_node.name = "World"
+	add_child(world_node)
+	var t0 := Time.get_ticks_msec()
+	var world: Variant = worlds[world_name].new()
+	world.build(world_node, seed)
+	if args.has("map") and world.has_method("save_map"):
+		world.save_map(args.map)
+	var route: Route = world.route
+	print("%s %d: road %.2f km, built in %d ms" % [world_name, seed, route.length / 1000.0, Time.get_ticks_msec() - t0])
+	rider.route = route
+	rider.distance = at
+	rider.speed = 0.0
+	rider.reset()
+	rider.advance(0.0, 0.0)
 
 
 func _process(delta: float) -> void:
 	var watts := link.power if link.connected else manual_power
 	rider.advance(watts, delta)
 	var src := "Sporterlay" if link.connected else (link.error if link.error != "" else "manual (Up/Down) - waiting for Sporterlay")
-	hud.text = "%d W   %.1f km/h   %+.1f %%   %.2f km   [%s]" % [watts, rider.speed * 3.6, rider.grade, rider.odometer / 1000.0, src]
+	hud.text = "%s   %d W   %.1f km/h   %+.1f %%   %.2f km   [%s]" % [world_name.capitalize(), watts, rider.speed * 3.6, rider.grade, rider.odometer / 1000.0, src]
 
 	if _shot != "":
 		_frame += 1
@@ -122,6 +102,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_tree().quit()
 		KEY_H:
 			hud.visible = not hud.visible
+		KEY_F2:
+			var names := worlds.keys()
+			world_name = names[(names.find(world_name) + 1) % names.size()]
+			_load_world(0.0)
 		KEY_F11:
 			var full := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
 			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if full else DisplayServer.WINDOW_MODE_FULLSCREEN)

@@ -1,4 +1,4 @@
-class_name Terrain
+class_name ValleyTerrain
 extends RefCounted
 ## The ground: a height field around the ride with the road carved in, and a skirt of
 ## mountains out to the horizon. Colours are baked into the vertices (sRGB).
