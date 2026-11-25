@@ -22,6 +22,7 @@ const DIRT := Color(0.58, 0.48, 0.34)
 var base_noise := FastNoiseLite.new()
 var detail := FastNoiseLite.new()
 var biomes := EndlessBiomes.new()
+var climbs := EndlessClimbs.new()
 var seed := 0
 ## Landmark pads [centre, radius, height, falloff]: the ground is set to `height`
 ## inside, blending out over `falloff`. Replaced (never changed in place) when one
@@ -38,6 +39,7 @@ func setup(p_seed: int) -> void:
 	detail.frequency = 0.02
 	detail.fractal_octaves = 2
 	biomes.setup(seed)
+	climbs.setup(seed)
 
 
 func base_height(x: float, z: float) -> float:
@@ -59,8 +61,12 @@ func pad_inside(x: float, z: float, margin: float) -> bool:
 
 
 ## Height before the road's bed is carved, `d` m from the road, with biome weights `w`.
-func natural(x: float, z: float, d: float, w: PackedFloat32Array) -> float:
-	var h := base_height(x, z) + detail.get_noise_2d(x, z) * 1.5
+func natural(x: float, z: float, d: float, w: PackedFloat32Array, s: float) -> float:
+	# the cols raise the whole country round the road with them
+	# the land rises less away from the road, so a col climbs a shoulder with the
+	# valley falling away below it (the mountains further out are added on top)
+	var c := climbs.height_at(s) * (1.0 - 0.65 * smoothstep(60.0, 700.0, d))
+	var h := base_height(x, z) * (1.0 - 0.8 * climbs.on_climb(s)) + c + detail.get_noise_2d(x, z) * 1.5
 	for k in EndlessBiomes.COUNT:
 		if w[k] > 0.001:
 			h += w[k] * biomes.relief(k, x, z, d)
@@ -166,7 +172,7 @@ func build_tile(key: Vector2i, far: bool, road: Array) -> Dictionary:
 			var s_near := rss[k] if rd[k] < FINE else lerpf(lerpf(csd[jj * cn + ii], csd[jj * cn + ii + 1], tx), lerpf(csd[(jj + 1) * cn + ii], csd[(jj + 1) * cn + ii + 1], tx), tz)
 			var w := biomes.weights(s_near)
 			wts.append(w)
-			var h := natural(x, z, d, w)
+			var h := natural(x, z, d, w, s_near)
 			if rd[k] < ROAD_REACH:
 				h = lerpf(rh[k] - 0.15, h, smoothstep(Route.HALF_WIDTH + 6.0, ROAD_REACH, rd[k]))
 			# far tiles sit under the near ones, well under near the road (their

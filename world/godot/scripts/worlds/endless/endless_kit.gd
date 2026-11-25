@@ -29,6 +29,7 @@ func setup(seed: int) -> void:
 	Lod.add_param("grass", grass, "fade_end", 170.0)
 	var blob: ShaderMaterial = TreeGen.materials(3)[0]
 	var mk := MegaKit.available()
+	VillageKit.preload_all()   # the landmarks' modules, so building one never stalls
 
 	# trees: three variants per kind, each with TreeGen's tiers and a far blob
 	var broad := func(pal: Array) -> Callable:
