@@ -1,6 +1,7 @@
 // Bats circling the castle towers, flown entirely on the GPU: each instance sits at
 // its orbit's centre, and INSTANCE_CUSTOM = (radius, angular speed, height, phase).
 // The mesh is a body with two wings along x; the wings beat by lifting with |x|.
+// Also the canyon's vultures: slow, shallow beats that are mostly gliding.
 shader_type spatial;
 render_mode cull_disabled;
 
@@ -8,6 +9,8 @@ render_mode cull_disabled;
 
 // dark leathery brown: black against the sky, caught by the torches and the moon
 uniform vec3 color : source_color = vec3(0.10, 0.07, 0.065);
+uniform float beat_rate = 13.0;   // wingbeats (rad/s)
+uniform float beat_amp = 0.75;    // how far the wings lift, per metre out
 
 void vertex() {
 	float r = INSTANCE_CUSTOM.x;
@@ -21,8 +24,8 @@ void vertex() {
 	vec3 side = normalize(cross(vec3(0.0, 1.0, 0.0), fwd));
 	vec3 up = cross(fwd, side);
 	vec3 v = VERTEX;
-	float beat = sin(TIME * (13.0 + fract(ph * 7.3) * 5.0) + ph * 11.0);
-	v.y += beat * abs(v.x) * 0.75;
+	float beat = sin(TIME * (beat_rate + fract(ph * 7.3) * beat_rate * 0.4) + ph * 11.0);
+	v.y += beat * abs(v.x) * beat_amp;
 	VERTEX = pos + side * v.x + up * v.y + fwd * v.z;
 	NORMAL = up;
 }

@@ -7,6 +7,7 @@ seed when a world loads, so there are no art assets in the repo.
 |---|---|---|---|
 | Valley | `valley` | Green valley, snowy mountain ring, a wobbly loop. Pure noise. | ~1.6 s |
 | Riverlands | `riverlands` | Autumn river basin (3.6 km across, 7.5 km loop) shaped by simulated water, layered cliffs and scree, forests of competing species, a planned road with bridges and fences | ~30 s |
+| Canyon | `canyon` | Canyon country at golden hour (9.95 km loop): red mesas, a deep canyon with Petra-like ruins cut into its wall, an oasis with palms round a pool, vultures | ~5 s |
 | Transylvania | `transylvania` | Late dusk in the Carpathians (6.9 km loop): misty hollows, dark spruce and dead trees, a torch-lit 120 m climb to a vampire's castle you ride through | ~4 s |
 
 F2 switches to the next world while riding. A third world, `gallery`, is a test bench:
@@ -78,6 +79,44 @@ Properly dark, on purpose. `scripts/worlds/transylvania/`:
 
 On the Sports PC (RTX 3060 Ti, 1080p, high): 116 fps on the castle climb, 107 fps in
 the valley mist.
+
+## Canyon
+
+Golden hour in red-rock desert. `scripts/worlds/canyon/`:
+
+- **`CanyonLand`**: a sandy floor with stepped mesas and buttes (`_terrace`: cliffs
+  with benches, rock coloured in strata bands by height, desert varnish on the
+  steepest faces). Mesas are kept off the open road; around the ruins the road runs
+  down a 1.4 km canyon whose walls (up to 72 m) are stamped along the loop from a
+  signed distance field (`ld`, `lu`): a slot in the middle, a wide plaza at the
+  ruins where the right wall opens to the sun and the left rises sheer. The loop is
+  straightened through the plaza. `flatten()` levels to a target height function;
+  `hollows` are dug after the road is carved, `greens` colour the ground.
+- **`CanyonRuins`**: in the plaza's own frame, with heights following the road's
+  through it: a temple front cut into the sheer wall in the manner of Petra's
+  Treasury, a colonnaded street (broken columns, fallen drums, lintels), a Roman
+  arch at the plaza's mouth, house foundations.
+- **`CanyonOasis`**: a hollow left of the road with a pool (the water shader on a
+  plane), date palms built in code, reeds, green ground, and a hamlet of mud-brick
+  houses with roof beams, domes and upper rooms.
+- **`CanyonScenery`**: junipers, sagebrush, dead trees, desert grass,
+  boulders fallen at the foot of cliffs. **`CanyonBirds`**: vultures circling high,
+  flown by the bats' shader with slow, shallow wingbeats.
+- **`CanyonCacti`**: saguaros (ribbed trunks, arms that bend up, some in bloom),
+  barrel cacti with a crown of flowers, prickly pear clumps with magenta fruit, over
+  the open desert out to ~360 m from the road (none in the canyon or the oasis).
+- **`CanyonRocks`**: hoodoo gardens near the road, lone stepped spires out in the
+  desert, and a natural arch the road passes under (`ARCH_AT`).
+- **`canyon_ground.gdshader`**: detail painted in world space, fading with distance:
+  strata lines and joints on rock (steep faces drawn faceted, so cliffs read as cut
+  rock), ripples and pebbles on sand; `masonry` (blocks and joints) for the built
+  ruins, `plaster` (blotches, bricks showing) for the oasis houses.
+- **Light**: the sun 24 deg up, square-on from the plaza's open side so it lights the
+  temple front; the canyon floor in shade under glowing rims.
+
+Walls rise ~130 m, mesas up to 140 m. Desert grass: ~60k tufts, bunch grass,
+grey-green clumps and yellow flowers out to ~180 m from the road. Tomb fronts with
+stepped crowns line the canyon walls; the hamlet has ladders, jars and garden walls.
 
 ## How it connects to Sporterlay
 
