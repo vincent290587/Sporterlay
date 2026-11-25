@@ -33,7 +33,9 @@ var _want := {}
 func _ready() -> void:
 	var toon := ShaderMaterial.new()
 	toon.shader = load("res://shaders/toon_vcol.gdshader")
-	ground_mat = toon
+	var ground := ShaderMaterial.new()
+	ground.shader = load("res://shaders/canyon_ground.gdshader")   # canyon detail by vertex alpha
+	ground_mat = ground
 	road_mat = toon
 
 
@@ -134,10 +136,13 @@ func _start(key: Vector3i) -> void:
 	if far:
 		# far tiles only need a thin sample of the road for their coarse distance
 		var p: PackedVector3Array = road[0]
+		var sd: PackedFloat32Array = road[1]
 		var thin := PackedVector3Array()
+		var thin_s := PackedFloat32Array()
 		for i in range(0, p.size(), 4):
 			thin.append(p[i])
-		road = [thin, road[1]]
+			thin_s.append(sd[i])
+		road = [thin, thin_s]
 	var inbox := _inbox
 	var l := land
 	_tasks[key] = WorkerThreadPool.add_task(func() -> void:

@@ -9,12 +9,19 @@ const TITLE := "Endless"
 var route := StreamRoute.new()
 var land := EndlessLand.new()
 var stream := EndlessStream.new()
+var sky := EndlessSky.new()
 
 
 func build(parent: Node3D, seed: int) -> void:
 	land.setup(seed)
 	route.setup(seed, land.base_height)
-	Look.apply(parent, {"fog_density": 0.00045, "shadow_distance": 300.0})
+	var plan := []
+	for k in range(1, 7):
+		plan.append("%s at %.1f km" % [EndlessBiomes.NAMES[land.biomes.kinds[k]], land.biomes.starts[k] / 1000.0])
+	print("  ahead: valley, then ", ", ".join(plan))
+	sky.name = "Sky"
+	sky.biomes = land.biomes
+	parent.add_child(sky)
 	stream.name = "Stream"
 	stream.route = route
 	stream.land = land
@@ -24,4 +31,6 @@ func build(parent: Node3D, seed: int) -> void:
 ## Called once the rider is placed: build what's around it before the first frame.
 func attach(rider: Rider) -> void:
 	stream.rider = rider
+	sky.rider = rider
+	sky.update(rider.distance)
 	stream.prime(rider.distance)
