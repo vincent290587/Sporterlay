@@ -1,0 +1,8 @@
+Models and textures: Stylized Nature MegaKit (Standard) by Quaternius
+https://quaternius.com/packs/stylizednaturemegakit.html
+
+License: CC0 1.0 Universal (public domain dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Copied by tools/import_megakit.py: a subset of the models, normal maps removed,
+textures reduced in size.

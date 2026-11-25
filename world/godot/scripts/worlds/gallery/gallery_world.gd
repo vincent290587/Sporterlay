@@ -48,12 +48,12 @@ func build(parent: Node3D, seed: int) -> void:
 			parent.add_child(mi)
 	# Quaternius' Stylized Nature MegaKit, as shipped, in front: trees, then small props
 	if DirAccess.dir_exists_absolute("res://assets/megakit"):
-		var trees := ["CommonTree_1", "CommonTree_3", "TwistedTree_1", "TwistedTree_3", "Pine_1", "Pine_3", "DeadTree_1"]
+		var trees := ["TwistedTree_1", "TwistedTree_2", "TwistedTree_3", "TwistedTree_5", "DeadTree_1", "DeadTree_3", "Bush_Common"]
 		for k in trees.size():
 			_place(parent, trees[k], Vector3((k - (trees.size() - 1) * 0.5) * 9.0, 0.0, 16.0))
-		var small := ["Bush_Common", "Bush_Common_Flowers", "Fern_1", "Plant_1_Big", "Plant_7_Big", "Flower_3_Group",
-			"Flower_4_Group", "Grass_Common_Tall", "Grass_Wispy_Tall", "Clover_1", "Mushroom_Common", "Rock_Medium_1",
-			"Rock_Medium_2", "Pebble_Round_1"]
+		var small := ["Bush_Common_Flowers", "Fern_1", "Plant_1_Big", "Plant_7_Big", "Flower_3_Group",
+			"Flower_4_Group", "Grass_Common_Tall", "Grass_Wispy_Tall", "Clover_2", "Mushroom_Common", "Mushroom_Laetiporus",
+			"Rock_Medium_1", "Rock_Medium_3", "Pebble_Round_1"]
 		for k in small.size():
 			_place(parent, small[k], Vector3((k - (small.size() - 1) * 0.5) * 2.6, 0.0, 26.0))
 
@@ -65,7 +65,19 @@ func build(parent: Node3D, seed: int) -> void:
 	route.build_loop(loop, func(_x: float, _z: float) -> float: return 0.0, func(_x: float, _z: float) -> float: return 0.0)
 
 
+## A MegaKit model: as shipped, or (--megakit=toon) through MegaKit with our shading.
 func _place(parent: Node3D, model: String, at: Vector3) -> void:
+	if "--megakit=toon" in OS.get_cmdline_user_args():
+		var style := MegaKit.SOLID
+		if model.begins_with("TwistedTree") or model.begins_with("CommonTree") or model.begins_with("Pine") or model.begins_with("Bush"):
+			style = MegaKit.TREE
+		elif not (model.begins_with("Rock") or model.begins_with("Pebble") or model.begins_with("Mushroom") or model.begins_with("DeadTree")):
+			style = MegaKit.PLANT
+		var mi := MeshInstance3D.new()
+		mi.mesh = MegaKit.mesh(model, style)
+		mi.position = at
+		parent.add_child(mi)
+		return
 	var scene: PackedScene = load("res://assets/megakit/%s.gltf" % model)
 	if scene == null:
 		push_warning("no model " + model)
