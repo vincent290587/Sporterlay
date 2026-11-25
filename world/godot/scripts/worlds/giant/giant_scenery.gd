@@ -37,6 +37,7 @@ static func build(parent: Node3D, land: GiantLand, route: Route, seed: int) -> v
 	Lod.add_param("reeds", grass_mat, "fade_start", 120.0)
 	Lod.add_param("reeds", grass_mat, "fade_end", 190.0)
 
+	_index_road(route)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed + 1
 	_giant_trees(parent, land, route, rng, toon)
@@ -138,7 +139,7 @@ static func _giant_trees(parent: Node3D, land: GiantLand, route: Route,
 	forest.seed = seed_for(rng)
 	forest.frequency = 0.006
 	forest.fractal_octaves = 3
-	var count := 3200
+	var count := 18000
 	for _k in count:
 		var px := rng.randf_range(-GiantLand.HALF + 60.0, GiantLand.HALF - 60.0)
 		var pz := rng.randf_range(-GiantLand.HALF + 60.0, GiantLand.HALF - 60.0)
@@ -178,7 +179,7 @@ static func _giant_trees(parent: Node3D, land: GiantLand, route: Route,
 static func _reeds(parent: Node3D, land: GiantLand, route: Route,
 		rng: RandomNumberGenerator, mat: Material) -> void:
 	var inst := Instancer.new(REEDS_CHUNK)
-	for _k in 6000:
+	for _k in 40000:
 		var px := rng.randf_range(-GiantLand.HALF + 40.0, GiantLand.HALF - 40.0)
 		var pz := rng.randf_range(-GiantLand.HALF + 40.0, GiantLand.HALF - 40.0)
 		var h := land.natural(px, pz)
@@ -191,15 +192,33 @@ static func _reeds(parent: Node3D, land: GiantLand, route: Route,
 	print("  reeds: ", inst.build(parent, Meshes.reeds_leaning(rng), mat, REEDS_VISIBLE, false, 0.0, "reeds"))
 
 
-static func _road_distance(route: Route, x: float, z: float) -> float:
-	var best := INF
+const ROAD_CELL := 40.0
+static var _road_grid := {}
+
+## Buckets the road points by ROAD_CELL so `_road_distance` only looks nearby.
+static func _index_road(route: Route) -> void:
+	_road_grid = {}
 	for m in route.count():
-		var p: Vector3 = route.points[m]
-		var dx: float = p.x - x
-		var dz: float = p.z - z
-		var d := dx * dx + dz * dz
-		if d < best:
-			best = d
+		var p := route.points[m]
+		var key := Vector2i(floori(p.x / ROAD_CELL), floori(p.z / ROAD_CELL))
+		if not _road_grid.has(key):
+			_road_grid[key] = PackedVector2Array()
+		_road_grid[key].append(Vector2(p.x, p.z))
+
+
+## Distance to the nearest road point; exact up to ROAD_CELL, INF beyond.
+static func _road_distance(_route: Route, x: float, z: float) -> float:
+	var cx := floori(x / ROAD_CELL)
+	var cz := floori(z / ROAD_CELL)
+	var q := Vector2(x, z)
+	var best := INF
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var pts: Variant = _road_grid.get(Vector2i(cx + dx, cz + dz))
+			if pts == null:
+				continue
+			for p: Vector2 in pts:
+				best = minf(best, q.distance_squared_to(p))
 	return sqrt(best)
 
 

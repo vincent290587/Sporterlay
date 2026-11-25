@@ -9,7 +9,7 @@ seed when a world loads, so there are no art assets in the repo.
 | Riverlands | `riverlands` | Autumn river basin (3.6 km across, 7.5 km loop) shaped by simulated water, layered cliffs and scree, forests of competing species, a planned road with bridges and fences | ~30 s |
 | Canyon | `canyon` | Canyon country at golden hour (9.95 km loop): red mesas, a deep canyon with Petra-like ruins cut into its wall, an oasis with palms round a pool, vultures | ~5 s |
 | Endless | `endless` | A road that never ends, through valley, autumn, dusk forest and canyon in turn, built around you as you ride; castles and arches now and then | instant |
-| Giant | `giant` | A flooded giant world: islands and a mountain skirt, a wooden boardwalk over water, and trees at 10x normal size | ~2 s |
+| Giant | `giant` | A flooded giant world (15 km loop): islands and a mountain skirt, a wooden boardwalk over water, and trees at 10x normal size | ~3 s |
 | Transylvania | `transylvania` | Late dusk in the Carpathians (6.9 km loop): misty hollows, dark spruce and dead trees, a torch-lit 120 m climb to a vampire's castle you ride through | ~4 s |
 
 F2 switches to the next world while riding. A third world, `gallery`, is a test bench:
@@ -164,8 +164,11 @@ A flooded giant world (`scripts/worlds/giant/`): the ground is mostly below the 
 line, leaving islands and a mountain skirt. A wooden boardwalk runs over the water,
 and the trees are `TreeGen` models drawn at 10x normal size on the islands.
 
-- **`GiantLand`**: a noise height field with a water level at 2 m; low ground is
-  submerged, high ground is green islands, a ring of mountains rises outside ~1100 m.
+- **`GiantLand`**: a noise height field (7.2 km square, 8 m grid) with a water level at
+  2 m; low ground is submerged, high ground is green islands, a ring of mountains rises
+  outside `RING` (3 km).
+- **The loop** (`GiantWorld._loop`): a circle of ~2.15 km radius with broad lobes and a
+  faster meander, kept inside the ring: about 15 km around.
 - **`GiantScenery`**: the ground mesh, a water plane, the boardwalk (`Roads.ribbon` with
   plank bridge colours), posts and railings, 10x trees with LOD tiers, and reeds along
   the shore.

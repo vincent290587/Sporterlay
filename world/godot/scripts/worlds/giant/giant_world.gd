@@ -34,18 +34,24 @@ func build(parent: Node3D, seed: int) -> void:
 	GiantScenery.build(parent, land, route, seed)
 
 
-## A circle whose radius wobbles with periodic noise, so it can't cross itself.
+## A circle whose radius wobbles with periodic noise, so it can't cross itself:
+## broad lobes plus a faster meander, ~16 km around, inside the mountain ring.
 func _loop(seed: int) -> PackedVector2Array:
 	var shape := FastNoiseLite.new()
 	shape.seed = seed + 20
 	shape.frequency = 0.45
 	shape.fractal_octaves = 3
+	var meander := FastNoiseLite.new()
+	meander.seed = seed + 21
+	meander.frequency = 0.45
+	meander.fractal_octaves = 2
 	var raw := PackedVector2Array()
-	var n := 720
+	var n := 2400
 	for k in n:
 		var a := TAU * k / n
 		var c := Vector2(cos(a), sin(a))
-		raw.append(c * (760.0 + 180.0 * shape.get_noise_2dv(c * 1.6)))
+		var r := 2150.0 + 480.0 * shape.get_noise_2dv(c * 1.6) + 130.0 * meander.get_noise_2dv(c * 9.0)
+		raw.append(c * minf(r, GiantLand.RING - 220.0))
 	for _i in 3:
 		raw = Route.smooth_loop2(raw, 3)
 	return raw

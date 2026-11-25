@@ -4,10 +4,11 @@ extends RefCounted
 ## islands and a ring of mountains. Giant trees (10x normal) stand on the islands.
 ## The water is a plane at WATER; the road is a wooden boardwalk above it.
 
-const HALF := 1500.0        # height field covers -HALF..HALF
-const STEP := 6.0
-const N := 501
-const FAR := 9000.0         # skirt reaches this radius
+const HALF := 3600.0        # height field covers -HALF..HALF
+const STEP := 8.0
+const N := 901
+const FAR := 11500.0        # skirt reaches this radius (camera far is 12 km)
+const RING := 3000.0        # mountains start rising here
 const SKIRT_LEVELS := 32
 const WATER := 2.0          # water surface (m)
 
@@ -45,7 +46,7 @@ func natural(x: float, z: float) -> float:
 	var small := detail.get_noise_2d(x, z) * 0.5 + 0.5
 	var h := -16.0 + 32.0 * big + 4.0 * small
 	var r := Vector2(x, z).length()
-	var m := smoothstep(1100.0, 2600.0, r)
+	var m := smoothstep(RING, RING + 1800.0, r)
 	h += m * (170.0 + 560.0 * (ridges.get_noise_2d(x, z) * 0.5 + 0.5))
 	return h
 
