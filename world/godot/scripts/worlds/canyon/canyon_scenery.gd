@@ -1,7 +1,9 @@
 class_name CanyonScenery
 extends RefCounted
-## Puts the canyon country together: ground, road, and the sparse desert plants:
-## junipers, sagebrush, dead trees, dry grass tufts, and rocks fallen from the cliffs.
+## Puts the canyon country together: ground (canyon_ground.gdshader: strata, cracks,
+## ripples, pebbles), road, rock formations (CanyonRocks), junipers, sagebrush, dead
+## trees, rocks fallen from the cliffs, and desert grass everywhere: bunch grass, dry
+## tufts, grey-green clumps and little yellow flowers, in patches.
 
 const TOON := preload("res://shaders/toon_vcol.gdshader")
 
@@ -10,7 +12,7 @@ const VISIBLE := 1500.0
 const NEAR := 220.0
 const MID := 520.0
 const SMALL_CHUNK := 48.0
-const TUFT_VISIBLE := 160.0
+const TUFT_VISIBLE := 200.0
 
 const JUNIPER := [Color(0.22, 0.29, 0.21), Color(0.38, 0.44, 0.30)]
 const ROAD := [Color(0.68, 0.45, 0.31), Color(0.75, 0.54, 0.38), Color(0.79, 0.59, 0.43)]
@@ -21,13 +23,16 @@ static func build(parent: Node3D, land: CanyonLand, route: Route, seed: int, blo
 		Lod.category(c[0], c[1])
 	var toon := ShaderMaterial.new()
 	toon.shader = TOON
-	_mesh(parent, land.build_mesh(), toon, true)
+	var ground := ShaderMaterial.new()
+	ground.shader = load("res://shaders/canyon_ground.gdshader")
+	_mesh(parent, land.build_mesh(), ground, true)
 	_mesh(parent, Roads.ribbon(route, PackedByteArray(), ROAD), toon, false)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed + 1
+	CanyonRocks.build(parent, land, route, seed, ground, blocked)
 	_plants(parent, land, rng, toon, blocked)
 	_rocks(parent, land, rng, toon, blocked)
-	_tufts(parent, land, route, rng, blocked)
+	_grass(parent, land, route, rng, blocked)
 
 
 static func _mesh(parent: Node3D, mesh: Mesh, mat: Material, shadows: bool) -> void:
@@ -127,25 +132,55 @@ static func _rocks(parent: Node3D, land: CanyonLand, rng: RandomNumberGenerator,
 	print("  rocks: %d" % n)
 
 
-## Dry grass tufts along the road edges and in the washes.
-static func _tufts(parent: Node3D, land: CanyonLand, route: Route, rng: RandomNumberGenerator, blocked: Callable) -> void:
-	var tufts := Instancer.new(SMALL_CHUNK)
+## Desert grass, thick by the road and thinning out to ~180 m, in patches: dry
+## tufts, tall bunch grass, grey-green clumps and yellow flowers, plus scattered
+## low shrubs. None on steep rock.
+static func _grass(parent: Node3D, land: CanyonLand, route: Route, rng: RandomNumberGenerator, blocked: Callable) -> void:
+	var patch := FastNoiseLite.new()
+	patch.seed = rng.randi()
+	patch.frequency = 0.02
+	patch.fractal_octaves = 2
+	var kinds: Array[Instancer] = [Instancer.new(SMALL_CHUNK), Instancer.new(SMALL_CHUNK), Instancer.new(SMALL_CHUNK), Instancer.new(SMALL_CHUNK)]
+	var shrubs := Instancer.new(SMALL_CHUNK)
 	var hw := Route.HALF_WIDTH
 	for m in route.count():
 		var p := route.points[m]
 		var t := route.tangent_index(m)
 		var right := Vector3(-t.z, 0.0, t.x)
-		for _k in 6:
+		for _k in 26:
 			var u := rng.randf_range(-1.0, 1.0)
-			var pos := p + t * rng.randf_range(-1.0, 1.0) + right * (hw + 0.8 + u * u * 60.0) * signf(u)
-			if land.road_distance_at(pos.x, pos.z) < hw + 0.6 or _is_blocked(blocked, pos.x, pos.z):
+			var pos := p + t * rng.randf_range(-1.0, 1.0) + right * (hw + 0.6 + u * u * 180.0) * signf(u)
+			var n := patch.get_noise_2d(pos.x, pos.z)
+			if rng.randf() > smoothstep(-0.45, 0.35, n) * 0.85 + 0.1:
 				continue
-			if land.normal_at(pos.x, pos.z).y < 0.85:
+			if land.road_distance_at(pos.x, pos.z) < hw + 0.5 or _is_blocked(blocked, pos.x, pos.z):
 				continue
-			pos.y = land.height_at(pos.x, pos.z)
-			tufts.put(pos, rng.randf() * TAU, rng.randf_range(0.7, 1.3), rng.randf_range(0.6, 1.1), Color(0.86, 0.74, 0.48).darkened(rng.randf() * 0.2))
+			if land.normal_at(pos.x, pos.z).y < 0.84:
+				continue
+			pos.y = land.height_at(pos.x, pos.z) - 0.03
+			var r := rng.randf()
+			var yaw := rng.randf() * TAU
+			if r < 0.4:
+				kinds[0].put(pos, yaw, rng.randf_range(0.8, 1.5), rng.randf_range(0.6, 1.2), Color(0.88, 0.75, 0.48).darkened(rng.randf() * 0.2))
+			elif r < 0.65:
+				kinds[1].put(pos, yaw, rng.randf_range(0.7, 1.1), rng.randf_range(0.5, 0.85), Color(0.92, 0.80, 0.52).darkened(rng.randf() * 0.15))
+			elif r < 0.88:
+				kinds[2].put(pos, yaw, rng.randf_range(0.8, 1.3), rng.randf_range(0.7, 1.1), Color(0.62, 0.66, 0.50).darkened(rng.randf() * 0.2))
+			elif r < 0.96:
+				kinds[3].put(pos, yaw, rng.randf_range(0.7, 1.1), rng.randf_range(0.6, 0.9), Color.WHITE)
+			else:
+				var sc := rng.randf_range(0.35, 0.7)
+				shrubs.put(pos, yaw, sc * 1.4, sc, Color(0.42, 0.48, 0.32).darkened(rng.randf() * 0.2))
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/grass.gdshader")
-	print("  tufts: %d" % tufts.build(parent, Meshes.grass(rng, Meshes.GRASS_SHORT), mat, TUFT_VISIBLE, false, 0.0, "grass"))
-	Lod.add_param("grass", mat, "fade_start", 100.0)
-	Lod.add_param("grass", mat, "fade_end", 150.0)
+	var meshes := [Meshes.grass(rng, Meshes.GRASS_SHORT), Meshes.grass(rng, Meshes.GRASS_TALL), Meshes.grass(rng, Meshes.GRASS_AVERAGE),
+		Meshes.flowers(rng, Color(1.0, 0.82, 0.18))]
+	var counts := []
+	for i in 4:
+		counts.append(kinds[i].build(parent, meshes[i], mat, TUFT_VISIBLE, false, 0.0, "grass"))
+	var toon := ShaderMaterial.new()
+	toon.shader = TOON
+	counts.append(shrubs.build(parent, Meshes.bush(rng), toon, MID, true, 0.0, "props"))
+	print("  grass: %d dry tufts, %d bunch grass, %d green clumps, %d flowers, %d shrubs" % counts)
+	Lod.add_param("grass", mat, "fade_start", TUFT_VISIBLE * 0.65)
+	Lod.add_param("grass", mat, "fade_end", TUFT_VISIBLE * 0.95)

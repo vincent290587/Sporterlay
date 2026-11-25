@@ -3,13 +3,15 @@ extends RefCounted
 ## The ruins in the canyon's plaza: a temple front carved into the left wall in the
 ## manner of Petra's Treasury (two orders of columns, a pediment, a round pavilion on
 ## top), a colonnaded street along the road with broken columns and fallen drums, a
-## gate arch the road passes under, and low house foundations on the open side.
+## gate arch the road passes under, two obelisks and low house foundations on the
+## open side, and small tomb fronts with stepped crowns carved all along the canyon
+## walls. Carved things use the rock material (strata lines), built things masonry.
 ##
 ## Laid out in the ruins' own frame: x to the right of the road, z along it, y up from
 ## the road at the centre. Built straight in world space (`_w`).
 
-const STONE := Color(0.88, 0.58, 0.45)
-const STONE_DARK := Color(0.74, 0.46, 0.36)
+const STONE := Color(0.90, 0.56, 0.40)
+const STONE_DARK := Color(0.76, 0.44, 0.32)
 const SHADOW := Color(0.09, 0.05, 0.04)
 
 const FRONT := -50.0       # the temple front stands this far left of the road
@@ -69,17 +71,21 @@ func level(land: CanyonLand) -> void:
 		func(x: float, z: float) -> float: return centre.y + _road_dy(local(x, z).y) - 0.15, 18.0)
 
 
-func build(parent: Node3D) -> void:
-	var b := MeshBuilder.new()
+func build(parent: Node3D, rock_mat: Material) -> void:
+	var b := MeshBuilder.new()      # built: masonry
+	var rock := MeshBuilder.new()   # carved from the cliff: strata
 	var dark := MeshBuilder.new()
-	_temple(b, dark)
+	_temple(rock, dark)
 	_colonnade(b)
 	_gate(b)
+	_obelisks(b)
 	_foundations(b)
-	var toon := ShaderMaterial.new()
-	toon.shader = load("res://shaders/toon_vcol.gdshader")
-	toon.set_shader_parameter("paint", 0.16)
-	_add(parent, b.commit(), toon, true)
+	_tombs(rock, dark)
+	var masonry := ShaderMaterial.new()
+	masonry.shader = load("res://shaders/canyon_ground.gdshader")
+	masonry.set_shader_parameter("masonry", 1.0)
+	_add(parent, b.commit(), masonry, true)
+	_add(parent, rock.commit(), rock_mat, true)
 	var unlit := ShaderMaterial.new()
 	unlit.shader = load("res://shaders/toon_vcol.gdshader")
 	_add(parent, dark.commit(), unlit, false)
@@ -215,8 +221,8 @@ func _temple(b: MeshBuilder, d: MeshBuilder) -> void:
 	var x := FRONT
 	# the rock it's cut into, and the recess round the facade
 	_box(b, Vector3(x - 32.0, -6.0, -HALF_W - 9.0), Vector3(x - 1.2, 46.0, HALF_W + 9.0), STONE_DARK)
-	_box(b, Vector3(x - 3.0, -6.0, -HALF_W - 9.0), Vector3(x + 1.0, 46.0, -HALF_W - 1.0), STONE_DARK)
-	_box(b, Vector3(x - 3.0, -6.0, HALF_W + 1.0), Vector3(x + 1.0, 46.0, HALF_W + 9.0), STONE_DARK)
+	_box(b, Vector3(x - 3.0, -6.0, -HALF_W - 9.0), Vector3(x - 0.2, 46.0, -HALF_W - 1.0), STONE_DARK)
+	_box(b, Vector3(x - 3.0, -6.0, HALF_W + 1.0), Vector3(x - 0.2, 46.0, HALF_W + 9.0), STONE_DARK)
 	# steps
 	for k in 3:
 		_box(b, Vector3(x - 1.0, -2.0, -HALF_W), Vector3(x + 3.0 - k * 0.9, 0.4 + k * 0.4, HALF_W), STONE.darkened(0.05 * k))
@@ -274,6 +280,23 @@ func _temple(b: MeshBuilder, d: MeshBuilder) -> void:
 		b.tri(i, i + 1, i + 2)
 	_cyl(b, Vector3(tc.x, 0.0, 0.0), 0.7, y2 + 16.0, y2 + 18.2, 10, _stone())
 	_cyl(b, Vector3(tc.x, 0.0, 0.0), 1.0, y2 + 16.8, y2 + 17.6, 10, _stone())
+	# mouldings: a band between the orders and a plinth course under the upper one
+	_box(b, Vector3(x - 1.2, 19.0, -HALF_W - 0.6), Vector3(x + 2.0, 19.6, HALF_W + 0.6), STONE.lightened(0.06))
+	_box(b, Vector3(x - 1.2, y2 - 1.0, -HALF_W - 0.3), Vector3(x + 1.6, y2 - 0.4, HALF_W + 0.3), STONE.lightened(0.04))
+	_box(b, Vector3(x - 1.2, 13.0, -HALF_W - 0.2), Vector3(x + 2.4, 13.8, HALF_W + 0.2), STONE.lightened(0.05))
+	# acroteria at the pediment's corners and apex
+	for z: float in [-8.0, 8.0]:
+		_box(b, Vector3(x + 1.6, 17.2, z - 0.6), Vector3(x + 2.7, 18.6, z + 0.6), _stone())
+	_box(b, Vector3(x + 1.4, 21.0, -0.7), Vector3(x + 2.6, 22.6, 0.7), _stone())
+	# relief panels sunk between the outer lower columns
+	for zz: float in [-8.8, 8.8]:
+		_box(b, Vector3(x - 1.4, 4.0, zz - 1.0), Vector3(x - 1.0, 10.5, zz + 1.0), STONE_DARK)
+	# a stepped crown cut into the cliff above it all
+	var cw := (2.0 * HALF_W + 4.0) / 7.0
+	for k in 7:
+		var z0 := -HALF_W - 2.0 + k * cw
+		_box(b, Vector3(x - 2.0, 40.0, z0 + 0.3), Vector3(x - 0.6, 41.6, z0 + cw - 0.3), _stone())
+		_box(b, Vector3(x - 2.0, 41.6, z0 + 0.3), Vector3(x - 0.6, 42.6, z0 + cw * 0.5), _stone())
 
 
 ## Columns either side of the road through the plaza and beyond; a third are broken
@@ -354,3 +377,87 @@ func _foundations(b: MeshBuilder) -> void:
 				var hi: Vector3 = e[1]
 				hi.y = _rng.randf_range(0.4, 2.4)
 				_box(b, lo, hi, _stone().darkened(0.05))
+
+
+## Two obelisks on the open side of the plaza, on stepped bases.
+func _obelisks(b: MeshBuilder) -> void:
+	for z: float in [-34.0, 30.0]:
+		var x := 22.0
+		_box(b, Vector3(x - 2.2, -1.0, z - 2.2), Vector3(x + 2.2, 0.8, z + 2.2), _stone())
+		_box(b, Vector3(x - 1.6, 0.8, z - 1.6), Vector3(x + 1.6, 1.8, z + 1.6), _stone())
+		var h := 11.0
+		var steps := 8
+		for k in steps:
+			var t0 := float(k) / steps
+			var r := lerpf(1.1, 0.55, t0)
+			_box(b, Vector3(x - r, 1.8 + t0 * h, z - r), Vector3(x + r, 1.8 + (t0 + 1.0 / steps) * h, z + r), _stone())
+		var base := Vector3(x, 1.8 + h, z)
+		var tip := base + Vector3.UP * 1.4
+		var corners := [Vector3(-1, 0, -1), Vector3(1, 0, -1), Vector3(1, 0, 1), Vector3(-1, 0, 1)]
+		for k in 4:
+			var c0: Vector3 = corners[k]
+			var c1: Vector3 = corners[(k + 1) % 4]
+			var n := _wn(((c0 + c1) * 0.5).normalized() + Vector3.UP * 0.4)
+			var i := b.add(_w(base + c0 * 0.55), n, STONE.lightened(0.05))
+			b.add(_w(base + c1 * 0.55), n, STONE.lightened(0.05))
+			b.add(_w(tip), n, STONE.lightened(0.05))
+			b.tri(i, i + 1, i + 2)
+
+
+## An oriented box in world space: origin o, axes ax (along), ay (up), az (out).
+func _obox(b: MeshBuilder, o: Vector3, ax: Vector3, ay: Vector3, az: Vector3, lo: Vector3, hi: Vector3, col: Color) -> void:
+	var c := [o + ax * lo.x + ay * lo.y + az * lo.z, o + ax * hi.x + ay * lo.y + az * lo.z,
+		o + ax * hi.x + ay * hi.y + az * lo.z, o + ax * lo.x + ay * hi.y + az * lo.z,
+		o + ax * lo.x + ay * lo.y + az * hi.z, o + ax * hi.x + ay * lo.y + az * hi.z,
+		o + ax * hi.x + ay * hi.y + az * hi.z, o + ax * lo.x + ay * hi.y + az * hi.z]
+	var faces := [[ax, [1, 2, 6, 5]], [-ax, [0, 4, 7, 3]], [ay, [3, 7, 6, 2]], [az, [4, 5, 6, 7]], [-az, [0, 3, 2, 1]]]
+	for f: Array in faces:
+		var q: Array = f[1]
+		var i := b.add(c[q[0]], f[0], col)
+		b.add(c[q[1]], f[0], col)
+		b.add(c[q[2]], f[0], col)
+		b.add(c[q[3]], f[0], col)
+		b.quad(i, i + 1, i + 2, i + 3)
+
+
+## Tomb fronts cut into both canyon walls, facing the road: a doorway in a frame
+## between pilasters, a cornice, and a crown of stepped merlons.
+func _tombs(rock: MeshBuilder, dark: MeshBuilder) -> void:
+	var count := 0
+	for dir: float in [-1.0, 1.0]:
+		var u := CanyonLand.PLAZA + 25.0 + _rng.randf_range(0.0, 20.0)
+		while u < CanyonLand.CANYON - 140.0:
+			var st := _s + dir * u
+			var side := -1.0 if _rng.randf() < 0.5 else 1.0
+			var r := _route.right_at(st)
+			var half := CanyonLand.canyon_half(u)
+			var o := _route.position_at(st) + r * side * (half - 0.8)
+			var out := -r * side
+			var ax := out.cross(Vector3.UP).normalized()
+			var w := _rng.randf_range(5.0, 9.0)
+			var h := _rng.randf_range(7.0, 12.0)
+			var col := STONE.lerp(STONE_DARK, _rng.randf() * 0.5)
+			var hw := w * 0.5
+			var up := Vector3.UP
+			_obox(rock, o, ax, up, out, Vector3(-hw - 1.5, -3.0, -14.0), Vector3(hw + 1.5, h + 3.0, -0.4), col.darkened(0.08))
+			_obox(rock, o, ax, up, out, Vector3(-hw, -1.0, -0.4), Vector3(hw, h - 2.6, 0.0), col)
+			for px: float in [-hw + 0.5, hw - 0.5]:
+				_obox(rock, o, ax, up, out, Vector3(px - 0.4, 0.0, 0.0), Vector3(px + 0.4, h - 2.6, 0.45), col.lightened(0.05))
+			_obox(rock, o, ax, up, out, Vector3(-hw - 0.4, h - 2.6, -0.4), Vector3(hw + 0.4, h - 2.0, 0.7), col.lightened(0.06))
+			var nm := maxi(3, int(w / 1.8))
+			var mw := w / nm
+			for k in nm:
+				var x0 := -hw + k * mw
+				_obox(rock, o, ax, up, out, Vector3(x0 + 0.1, h - 2.0, -0.4), Vector3(x0 + mw - 0.1, h - 1.0, 0.2), col)
+				_obox(rock, o, ax, up, out, Vector3(x0 + mw * 0.3, h - 1.0, -0.4), Vector3(x0 + mw - 0.1, h - 0.2, 0.2), col)
+			var dw := _rng.randf_range(0.8, 1.3)
+			var dh := _rng.randf_range(2.6, 3.6)
+			_obox(rock, o, ax, up, out, Vector3(-dw - 0.35, 0.0, 0.0), Vector3(dw + 0.35, dh + 0.4, 0.2), col.lightened(0.08))
+			var i := dark.add(o - ax * dw + out * 0.22, out, SHADOW)
+			dark.add(o + ax * dw + out * 0.22, out, SHADOW)
+			dark.add(o + ax * dw + up * dh + out * 0.22, out, SHADOW)
+			dark.add(o - ax * dw + up * dh + out * 0.22, out, SHADOW)
+			dark.quad(i, i + 1, i + 2, i + 3)
+			count += 1
+			u += _rng.randf_range(28.0, 55.0)
+	print("  tomb fronts: %d" % count)

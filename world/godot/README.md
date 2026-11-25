@@ -99,13 +99,21 @@ Golden hour in red-rock desert. `scripts/worlds/canyon/`:
 - **`CanyonOasis`**: a hollow left of the road with a pool (the water shader on a
   plane), date palms built in code, reeds, green ground, and a hamlet of mud-brick
   houses with roof beams, domes and upper rooms.
-- **`CanyonScenery`**: junipers, sagebrush, dead trees, dry tufts by the road,
+- **`CanyonScenery`**: junipers, sagebrush, dead trees, desert grass,
   boulders fallen at the foot of cliffs. **`CanyonBirds`**: vultures circling high,
   flown by the bats' shader with slow, shallow wingbeats.
-- **Light**: the sun 13 deg up, placed on the plaza's open side so it lights the
-  temple front; long shadows, the canyon floor in shade under glowing rims.
+- **`CanyonRocks`**: hoodoo gardens near the road, lone stepped spires out in the
+  desert, and a natural arch the road passes under (`ARCH_AT`).
+- **`canyon_ground.gdshader`**: detail painted in world space, fading with distance:
+  strata lines and joints on rock (steep faces drawn faceted, so cliffs read as cut
+  rock), ripples and pebbles on sand; `masonry` (blocks and joints) for the built
+  ruins, `plaster` (blotches, bricks showing) for the oasis houses.
+- **Light**: the sun 24 deg up, square-on from the plaza's open side so it lights the
+  temple front; the canyon floor in shade under glowing rims.
 
-On the Sports PC (1080p, high): 290-310 fps.
+Walls rise ~130 m, mesas up to 140 m. Desert grass: ~60k tufts, bunch grass,
+grey-green clumps and yellow flowers out to ~180 m from the road. Tomb fronts with
+stepped crowns line the canyon walls; the hamlet has ladders, jars and garden walls.
 
 ## How it connects to Sporterlay
 

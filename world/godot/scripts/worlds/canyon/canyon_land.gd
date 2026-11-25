@@ -20,8 +20,8 @@ const RUINS_AT := 0.6       # where round the loop (fraction) the ruins stand
 const OASIS_AT := 0.2       # and the oasis
 const CANYON := 700.0       # the canyon runs this far (m of road) either side of the ruins
 const PLAZA := 95.0         # within this of the ruins it's a wide plaza
-const WALL := 72.0          # canyon wall height (m)
-const MESA := 80.0          # tallest mesas (m)
+const WALL := 130.0         # canyon wall height (m)
+const MESA := 140.0         # tallest mesas (m)
 
 const SAND := Color(0.86, 0.66, 0.45)
 const SAND_PALE := Color(0.92, 0.78, 0.58)
@@ -156,7 +156,7 @@ func _stamp() -> void:
 
 ## Stepped strata: t 0..1 up a slope becomes cliffs with benches between.
 static func _terrace(t: float) -> float:
-	return smoothstep(0.0, 0.07, t) * 0.42 + smoothstep(0.34, 0.40, t) * 0.33 + smoothstep(0.68, 0.73, t) * 0.25
+	return smoothstep(0.0, 0.05, t) * 0.55 + smoothstep(0.30, 0.35, t) * 0.28 + smoothstep(0.66, 0.70, t) * 0.17
 
 
 ## How wide the canyon is (half, m) at `u` m of road from the ruins: a slot most of
@@ -175,18 +175,18 @@ func natural(x: float, z: float) -> float:
 	var u := _nearest_u(x, z)
 	# mesas and buttes, kept off the open road
 	var m := mesas.get_noise_2d(x, z) * 0.5 + 0.5
-	var mt := clampf((m - 0.56) / 0.3, 0.0, 1.0) * smoothstep(55.0, 170.0, d)
+	var mt := clampf((m - 0.56) / 0.22, 0.0, 1.0) * smoothstep(55.0, 170.0, d)
 	var top := MESA * _terrace(mt)
 	# the canyon: walls stamped along the road around the ruins
 	var inside := 1.0 - smoothstep(CANYON - 150.0, CANYON + 60.0, u)
 	if inside > 0.0:
 		var half := canyon_half(u) + rim.get_noise_2d(x, z) * 4.0
-		var t := clampf((d - half) / 120.0, 0.0, 1.0)
+		var t := clampf((d - half) / 75.0, 0.0, 1.0)
 		var wall := WALL * (0.85 + 0.3 * (tint.get_noise_2d(x * 0.3, z * 0.3) * 0.5 + 0.5)) * _terrace(t)
 		# by the ruins the right-hand wall opens to the sun, and the left one the
 		# temple is cut into rises sheer
 		if sd > 0.0:
-			wall *= smoothstep(PLAZA - 20.0, PLAZA + 80.0, u)
+			wall *= smoothstep(PLAZA + 20.0, PLAZA + 160.0, u)
 		else:
 			var sheer := 1.0 - smoothstep(PLAZA - 40.0, PLAZA + 10.0, u)
 			wall = lerpf(wall, WALL * 1.15 * smoothstep(0.0, 0.06, t), sheer)

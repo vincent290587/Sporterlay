@@ -30,7 +30,7 @@ func build(parent: Node3D, seed: int) -> void:
 	# the sun low on the plaza's open side, so its light falls on the carved facade
 	var right := route.right_at(ruins_s)
 	var fwd := route.tangent_at(ruins_s)
-	var from := (right + fwd * 0.35).normalized()   # towards the sun
+	var from := (right + fwd * 0.08).normalized()   # towards the sun
 	Look.apply(parent, {
 		"sky_top": Color(0.33, 0.50, 0.78),
 		"sky_horizon": Color(0.99, 0.80, 0.56),
@@ -38,7 +38,7 @@ func build(parent: Node3D, seed: int) -> void:
 		"sun_color": Color(1.0, 0.74, 0.46),
 		"sun_sky_color": Color(1.0, 0.70, 0.38),
 		"cloud_shade": Color(0.92, 0.62, 0.50),
-		"sun_pitch": -13.0,
+		"sun_pitch": -24.0,
 		"sun_yaw": rad_to_deg(atan2(from.x, from.z)),
 		"sun_energy": 1.45,
 		"ambient": Color(0.52, 0.52, 0.70),
@@ -51,7 +51,9 @@ func build(parent: Node3D, seed: int) -> void:
 	})
 	CanyonScenery.build(parent, land, route, seed, func(x: float, z: float) -> bool: return oasis.blocks(x, z) or ruins.blocks(x, z))
 	oasis.build(parent, land)
-	ruins.build(parent)
+	var rock := ShaderMaterial.new()
+	rock.shader = load("res://shaders/canyon_ground.gdshader")
+	ruins.build(parent, rock)
 	CanyonBirds.build(parent, route, ruins_s, oasis_s, seed)
 
 

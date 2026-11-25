@@ -89,8 +89,10 @@ func build(parent: Node3D, land: CanyonLand) -> void:
 	gm.shader = load("res://shaders/grass.gdshader")
 	reeds.build(parent, Meshes.reeds(_rng), gm, 250.0, false, 0.0, "grass")
 	grass.build(parent, Meshes.grass(_rng, Meshes.GRASS_AVERAGE), gm, 250.0, false, 0.0, "grass")
-	var houses := _hamlet(land, level)
-	_add(parent, houses, toon)
+	var plaster := ShaderMaterial.new()
+	plaster.shader = load("res://shaders/canyon_ground.gdshader")
+	plaster.set_shader_parameter("plaster", 1.0)
+	_add(parent, _hamlet(land, level), plaster)
 	print("  oasis: %d palms, %d reeds, %d grass" % [n_palms, reeds.count(), grass.count()])
 
 
@@ -195,7 +197,11 @@ func _hamlet(land: CanyonLand, level: float) -> ArrayMesh:
 		placed.append(p)
 		# face the pool
 		var face := (centre2 - p).normalized()
-		_house(b, Vector3(p.x, h - 0.3, p.y), Vector3(face.x, 0.0, face.y), Vector3(_rng.randf_range(4.5, 7.0), _rng.randf_range(2.8, 3.6), _rng.randf_range(4.5, 6.5)))
+		var size := Vector3(_rng.randf_range(4.5, 7.0), _rng.randf_range(2.8, 3.6), _rng.randf_range(4.5, 6.5))
+		var base := Vector3(p.x, h - 0.3, p.y)
+		var f3 := Vector3(face.x, 0.0, face.y)
+		_house(b, base, f3, size)
+		_yard(b, land, base, f3, size)
 	return b.commit()
 
 
@@ -262,3 +268,82 @@ func _quad(b: MeshBuilder, a: Vector3, c: Vector3, d: Vector3, e: Vector3, n: Ve
 	b.add(d, n, col)
 	b.add(e, n, col)
 	b.quad(i, i + 1, i + 2, i + 3)
+
+
+## What lies round a house: a ladder up to the roof, clay jars by the door, and
+## sometimes a low garden wall on one side.
+func _yard(b: MeshBuilder, land: CanyonLand, base: Vector3, face: Vector3, size: Vector3) -> void:
+	var side := Vector3(-face.z, 0.0, face.x)
+	var wood := Color(0.40, 0.29, 0.19)
+	if _rng.randf() < 0.6:
+		# leaning on the side wall
+		var s := 1.0 if _rng.randf() < 0.5 else -1.0
+		var foot := base + side * s * (size.x * 0.5 + 1.0) + face * _rng.randf_range(-1.0, 1.0)
+		var top := base + side * s * (size.x * 0.5 + 0.1) + Vector3.UP * (size.y + 0.8)
+		for o: float in [-0.25, 0.25]:
+			_beam(b, foot + face * o, top + face * o, 0.05, wood)
+		for k in 7:
+			var t := (k + 0.6) / 7.6
+			_beam(b, foot.lerp(top, t) - face * 0.25, foot.lerp(top, t) + face * 0.25, 0.03, wood)
+	# jars by the door
+	for _k in _rng.randi_range(1, 4):
+		var at := base + face * (size.z * 0.5 + _rng.randf_range(0.6, 1.4)) + side * _rng.randf_range(-size.x * 0.45, size.x * 0.45)
+		at.y = land.height_at(at.x, at.z)
+		_jar(b, at, _rng.randf_range(0.6, 1.1))
+	if _rng.randf() < 0.5:
+		var s := 1.0 if _rng.randf() < 0.5 else -1.0
+		var c := base + side * s * (size.x * 0.5 + 4.0)
+		var w := 3.5
+		var hgt := _rng.randf_range(1.1, 1.6)
+		for e: Array in [[c - face * w - side * s * 3.5, c - face * w + side * s * 3.5], [c + face * w - side * s * 3.5, c + face * w + side * s * 3.5],
+				[c - face * w + side * s * 3.5, c + face * w + side * s * 3.5]]:
+			var a: Vector3 = e[0]
+			var z: Vector3 = e[1]
+			a.y = land.height_at(a.x, a.z) - 0.4
+			z.y = land.height_at(z.x, z.z) - 0.4
+			_wall(b, a, z, hgt + 0.4, 0.35, MUD_DARK)
+
+
+## A thin square beam from a to b.
+func _beam(b: MeshBuilder, a: Vector3, e: Vector3, r: float, col: Color) -> void:
+	var d := (e - a).normalized()
+	var u := d.cross(Vector3.UP if absf(d.y) < 0.9 else Vector3.RIGHT).normalized() * r
+	var v := d.cross(u).normalized() * r
+	var corners := [u + v, u - v, -u - v, -u + v]
+	for k in 4:
+		var c0: Vector3 = corners[k]
+		var c1: Vector3 = corners[(k + 1) % 4]
+		var n := (c0 + c1).normalized()
+		_quad(b, a + c0, a + c1, e + c1, e + c0, n, col)
+
+
+## A straight mud wall from a to e (both at its foot), with a rounded-off top.
+func _wall(b: MeshBuilder, a: Vector3, e: Vector3, h: float, t: float, col: Color) -> void:
+	var d := Vector3(e.x - a.x, 0.0, e.z - a.z).normalized()
+	var n := Vector3(-d.z, 0.0, d.x)
+	var up := Vector3.UP
+	_quad(b, a + n * t, e + n * t, e + n * t + up * h, a + n * t + up * h, n, col)
+	_quad(b, e - n * t, a - n * t, a - n * t + up * h, e - n * t + up * h, -n, col)
+	_quad(b, a + n * t + up * h, e + n * t + up * h, e + up * (h + 0.15), a + up * (h + 0.15), (n + up).normalized(), col.lightened(0.04))
+	_quad(b, e - n * t + up * h, a - n * t + up * h, a + up * (h + 0.15), e + up * (h + 0.15), (up - n).normalized(), col.lightened(0.04))
+	_quad(b, a - n * t, a + n * t, a + n * t + up * h, a - n * t + up * h, -d, col)
+	_quad(b, e + n * t, e - n * t, e - n * t + up * h, e + n * t + up * h, d, col)
+
+
+## A round-bellied clay jar `h` m tall.
+func _jar(b: MeshBuilder, at: Vector3, h: float) -> void:
+	var profile := [[0.0, 0.18], [0.15, 0.32], [0.45, 0.38], [0.75, 0.3], [0.88, 0.14], [0.95, 0.12], [1.0, 0.16]]
+	var col := Color(0.70, 0.42, 0.28).darkened(_rng.randf() * 0.2)
+	var sides := 8
+	for i in profile.size() - 1:
+		var y0: float = profile[i][0] * h
+		var y1: float = profile[i + 1][0] * h
+		var r0: float = profile[i][1] * h
+		var r1: float = profile[i + 1][1] * h
+		for k in sides:
+			var a0 := TAU * k / sides
+			var a1 := TAU * (k + 1) / sides
+			var am := (a0 + a1) * 0.5
+			var n := Vector3(cos(am), (r0 - r1) / maxf(y1 - y0, 0.01), sin(am)).normalized()
+			_quad(b, at + Vector3(cos(a0) * r0, y0, sin(a0) * r0), at + Vector3(cos(a1) * r0, y0, sin(a1) * r0),
+				at + Vector3(cos(a1) * r1, y1, sin(a1) * r1), at + Vector3(cos(a0) * r1, y1, sin(a0) * r1), n, col)
