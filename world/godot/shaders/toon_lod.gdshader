@@ -4,6 +4,7 @@ shader_type spatial;
 
 #include "res://shaders/toon.gdshaderinc"
 #include "res://shaders/lod_fade.gdshaderinc"
+#include "res://shaders/sway.gdshaderinc"
 
 uniform float paint = 0.08;
 
@@ -14,6 +15,7 @@ void vertex() {
 	if (!lod_keep_vertex(lod_d)) {
 		VERTEX = vec3(0.0);
 	}
+	VERTEX += sway_offset(VERTEX, MODEL_MATRIX, TIME);
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 

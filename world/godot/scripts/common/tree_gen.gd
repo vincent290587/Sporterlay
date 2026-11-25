@@ -16,6 +16,7 @@ extends RefCounted
 ## blob trees: a broadleaf is ~10 m tall with a ~7 m crown at scale 1.
 
 const BARK := Color(0.44, 0.32, 0.22)
+const SWAY := 0.25    # m of sway 10 m up (bark and leaves together)
 const BIRCH_BARK := Color(0.90, 0.88, 0.82)
 const PINE_BARK := Color(0.62, 0.38, 0.24)     # Scots pine: orange-brown
 const DEAD_BARK := Color(0.56, 0.52, 0.48)
@@ -50,6 +51,9 @@ static func materials(tier: int) -> Array:
 		bark.shader = load("res://shaders/toon_lod.gdshader")
 		var leaf := ShaderMaterial.new()
 		leaf.shader = load("res://shaders/foliage.gdshader")
+		for m: ShaderMaterial in [bark, leaf]:   # one sway for the whole tree
+			m.set_shader_parameter("sway", SWAY)
+			m.set_shader_parameter("sway_height", 10.0)
 		_mats[tier] = [bark, leaf]
 	return _mats[tier]
 

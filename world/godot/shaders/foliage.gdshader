@@ -4,15 +4,14 @@
 //   0.5  needle frond: a tapering strip with a jagged edge
 //   0.75 needle tuft: a spiky burst (pine)
 //   1    leaf clump: a scalloped disc
-// Crowns sway a little in the wind, more towards the top. Tiers dissolve into each
+// The tree sways as one piece with its bark (sway.gdshaderinc). Tiers dissolve into each
 // other per tree (lod_fade.gdshaderinc).
 shader_type spatial;
 render_mode cull_disabled;
 
 #include "res://shaders/toon.gdshaderinc"
 #include "res://shaders/lod_fade.gdshaderinc"
-
-uniform float sway = 0.06;
+#include "res://shaders/sway.gdshaderinc"
 
 varying vec3 wpos;
 
@@ -21,12 +20,8 @@ void vertex() {
 	if (!lod_keep_vertex(lod_d)) {
 		VERTEX = vec3(0.0);
 	}
+	VERTEX += sway_offset(VERTEX, MODEL_MATRIX, TIME);
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	vec3 origin = MODEL_MATRIX[3].xyz;
-	float above = max(VERTEX.y - 2.5, 0.0);
-	float t = TIME * 1.1 + origin.x * 0.05 + origin.z * 0.07;
-	VERTEX.x += sin(t) * sway * above;
-	VERTEX.z += sin(t * 0.8 + 1.3) * sway * 0.6 * above;
 }
 
 float clump(vec2 uv) {
