@@ -54,14 +54,17 @@ func build(parent: Node3D, seed: int) -> void:
 	cliffs.land = null
 
 
-## Route points over water, widened a little for the abutments.
+## Route points over water or high above the ground beside it, widened a little for
+## the abutments.
 func _bridges() -> PackedByteArray:
 	var n := route.count()
 	var wet := PackedByteArray()
 	wet.resize(n)
 	for m in n:
 		var p := route.points[m]
-		if land.water_at(p.x, p.z) != RiverLand.DRY:
+		# over water, or near it and well above the natural ground (the approach spans)
+		if land.water_at(p.x, p.z) != RiverLand.DRY or \
+				(land.field(land.dw, p.x, p.z) < 20.0 and p.y - land.field(land.ha, p.x, p.z) > 1.0):
 			wet[m] = 1
 	var out := PackedByteArray()
 	out.resize(n)

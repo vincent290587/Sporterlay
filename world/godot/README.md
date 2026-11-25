@@ -70,7 +70,7 @@ Keys: **Esc** quit, **H** hide the status line, **F3** frame rate, **F4** detail
 
 Options (after `--` when launching the editor binary, directly on an exported exe):
 `--port=47810` (must match Sporterlay's `world_port`), `--world=riverlands`,
-`--seed=7` (another variant), `--map=out.png`, `--bench=60` (ride 60 s with vsync off; prints the frame rate, memory use, GPU and CPU, and saves them to `bench.txt` in the user data folder: `%APPDATA%\Godot\app_userdata\Sporterlay World` on Windows, `~/.local/share/godot/app_userdata/Sporterlay World` on Linux), `--size=1920x1080` (window size), `--cam=x,y,z,tx,ty,tz` (fixed camera), `--quality=high`, `--target-fps=60`, `--auto-lod=on`,
+`--seed=7` (another variant), `--map=out.png`, `--bench=60` (ride 60 s with vsync off; prints the frame rate, memory use, GPU and CPU, and saves them to `bench.txt` in the user data folder: `%APPDATA%\Godot\app_userdata\Sporterlay World` on Windows, `~/.local/share/godot/app_userdata/Sporterlay World` on Linux), `--size=1920x1080` (window size), `--cam=x,y,z,tx,ty,tz` (fixed camera), `--look=90 --pitch=-8` (turn the rider's view), `--quality=high`, `--target-fps=60`, `--auto-lod=on`,
 `--fade=on` (see [docs/level-of-detail.md](docs/level-of-detail.md)),
 `--power=200`, `--at=1200` (start that far along the road),
 `--shot=out.png --frames=90` (save a screenshot and quit; used for checks).

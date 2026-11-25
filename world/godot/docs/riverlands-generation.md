@@ -176,9 +176,21 @@ catchment area in units of 100 m².
 
 The results are `ha` (final ground height), `wl` (water surface, or `DRY`) and `acc`.
 
-The water surface (`water_mesh()`) is built only around wet cells: wet vertices sit at
-the water level, and dry neighbours sit 1.5 m under the ground, so the surface dips into
-the banks and the shoreline is wherever the two cross.
+Channels are kept 4-connected: where water steps to a diagonal cell, the lower of the
+two cells between is wet too (else the banks split a stream into a chain of pools).
+The beds are cut per cell, so the cut is blurred (two 5 m box blurs, ×1.4) to slope the
+banks down to the water instead of dropping in square steps.
+
+The water surface (`water_mesh()`) is a flat sheet: wet vertices at the water level,
+and the sheet reaches `SHEET_REACH` (12 m) under the banks at the nearest water's level
+(never above the ground there), its last ring always tucked under the ground. The
+shoreline is where the ground rises through the sheet, so it follows the land's
+contours rather than the grid.
+
+**Water shader** (`water.gdshader`): turquoise in the shallows to deep blue by depth
+(from the depth buffer), the sky's blue at grazing angles, slow ripple streaks drifting
+across in toon bands, a thin lapping foam line at the shore and small glints that come
+and go (only up close).
 
 ## 3. Analysis maps
 

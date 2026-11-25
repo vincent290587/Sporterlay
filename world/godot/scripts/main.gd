@@ -12,6 +12,8 @@ extends Node3D
 ##   --bench=60     ride for that many seconds with vsync off, print the frame rate, quit
 ##   --size=1920x1080  open in a window of that size
 ##   --cam=x,y,z,tx,ty,tz  fixed camera at x,y,z looking at tx,ty,tz (model checks)
+##   --look=90      turn the rider's view that many degrees from the road (left +), and
+##   --pitch=-10    tilt it (down -), for looking around a spot
 ##   --quality=high low|medium|high|ultra: starting draw distances (see Lod)
 ##   --target-fps=60  frame rate the LOD manager keeps while riding
 ##   --auto-lod=on  let it adjust draw distances to the budget (off by default in --bench)
@@ -21,6 +23,8 @@ extends Node3D
 
 var worlds := {"valley": ValleyWorld, "riverlands": RiverWorld, "gallery": GalleryWorld}
 var cam_override := []
+var look_yaw := 0.0
+var look_pitch := 0.0
 
 var world_name := "valley"
 var seed := 7
@@ -55,6 +59,8 @@ func _ready() -> void:
 		var wh: PackedStringArray = str(args.size).split("x")
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		DisplayServer.window_set_size(Vector2i(int(wh[0]), int(wh[1])))
+	look_yaw = deg_to_rad(float(args.get("look", "0")))
+	look_pitch = deg_to_rad(float(args.get("pitch", "0")))
 	if args.has("cam"):
 		cam_override = Array(str(args.cam).split(",")).map(func(v: String) -> float: return float(v))
 	_bench = float(args.get("bench", "0"))
@@ -115,6 +121,8 @@ func _load_world(at: float) -> void:
 func _process(delta: float) -> void:
 	var watts := link.power if link.connected else manual_power
 	rider.advance(watts, delta)
+	if look_yaw != 0.0 or look_pitch != 0.0:
+		rider.camera.rotation = Vector3(look_pitch, look_yaw, 0.0)
 	if cam_override.size() == 6:
 		var eye := Vector3(cam_override[0], cam_override[1], cam_override[2])
 		rider.transform = Transform3D(Basis(), eye).looking_at(Vector3(cam_override[3], cam_override[4], cam_override[5]), Vector3.UP)
@@ -137,7 +145,7 @@ func _process(delta: float) -> void:
 		_frame += 1
 		if _frame == _shot_frames:
 			get_viewport().get_texture().get_image().save_png(_shot)
-			print("saved ", _shot)
+			print("saved ", _shot, " (rider at ", rider.global_position.snapped(Vector3(0.1, 0.1, 0.1)), ")")
 			get_tree().quit()
 
 

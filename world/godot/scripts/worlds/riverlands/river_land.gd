@@ -20,6 +20,7 @@ const SKIRT_LEVELS := 36
 const ROAD_REACH := 48.0
 const RIVER_ACC := 450.0      # upstream area (in 100 m² units) before a cell is a river: 0.045 km²
 const LAKE_DEPTH := 2.0       # shallower hollows silt up into flats
+const SHEET_REACH := 12.0     # m: the water sheet extends this far under the banks
 const SILT := 0.8             # how much of each hollow fills with sediment
 const DROPLETS := 150000      # erosion: rain drops, and how each one behaves
 const DROP_STEPS := 60
@@ -198,6 +199,27 @@ func build() -> void:
 			ha[c] = wl[c] - depth
 			if acc[c] >= RIVER_ACC * 12.0:
 				widen.append(c)
+	# keep channels 4-connected: where water steps to a diagonal cell, also wet the
+	# lower of the two cells between them (else banks split a stream into pools)
+	var parent: PackedInt32Array = flood.parent
+	for c in n:
+		if wl[c] == DRY or lake[c] != 0:
+			continue
+		var p := parent[c]
+		if p < 0 or wl[p] == DRY:
+			continue
+		var ci := c % NA
+		var cj := c / NA
+		var pi := p % NA
+		var pj := p / NA
+		if ci == pi or cj == pj:
+			continue
+		var a := cj * NA + pi
+		var b := pj * NA + ci
+		var mid := a if h1[a] < h1[b] else b
+		if wl[mid] == DRY:
+			wl[mid] = (wl[c] + wl[p]) * 0.5
+			ha[mid] = minf(ha[mid], (ha[c] + ha[p]) * 0.5)
 	for c in widen:
 		for d in 8:
 			var ni: int = c % NA + DX[d]
@@ -208,6 +230,17 @@ func build() -> void:
 			if wl[nb] == DRY and h1[nb] > wl[c]:
 				wl[nb] = wl[c]
 				ha[nb] = minf(ha[nb], wl[c] - 0.8)
+	# soften the beds: the cut is per cell, so the banks dropped as square steps; a
+	# blurred copy of the cut slopes them down to the water instead, and the shoreline
+	# (where the ground rises through the water sheet) follows that slope
+	var cut := PackedFloat32Array()
+	cut.resize(n)
+	for c in n:
+		cut[c] = maxf(h1[c] - ha[c], 0.0)
+	var soft := blur_m(blur_m(cut, A_STEP), A_STEP)
+	for c in n:
+		var bank := h1[c] - soft[c] * 1.4
+		ha[c] = minf(ha[c], bank) if wl[c] != DRY else minf(h1[c], bank)
 	print("  rivers and lakes: %d ms" % (Time.get_ticks_msec() - t))
 
 	_analyse()
@@ -677,7 +710,7 @@ func carve(route: Route) -> void:
 			var z := _rx(k / N)
 			var w := field(dw, x, z)
 			var t := smoothstep(Route.HALF_WIDTH + 8.0, ROAD_REACH, road_d[k])
-			t = maxf(t, 1.0 - smoothstep(4.0, 14.0, w))   # leave river banks and beds alone
+			t = maxf(t, 1.0 - smoothstep(8.0, 20.0, w))   # leave river banks and beds alone, slope up to the road beyond
 			heights[k] = lerpf(road_h[k] - 0.15, heights[k], t)
 
 
@@ -830,8 +863,34 @@ func build_mesh() -> ArrayMesh:
 	return b.commit()
 
 
-## Rivers and lakes on the analysis grid: wet vertices at the water level, dry ones
-## tucked under the ground so the surface meets the banks.
+## Water level for a dry vertex at the edge of the water: just under the level of the
+## wet cells beside it, so the surface stays a flat sheet that the banks cut off (it
+## used to dip under the ground there, which made narrow streams look like tents).
+func _shore_level(c: int) -> float:
+	if dw.size() == NA * NA and wnear[c] != DRY and dw[c] < SHEET_REACH:
+		var ground := heights[c] if heights.size() == NA * NA else ha[c]
+		if dw[c] > SHEET_REACH - A_STEP * 1.5:
+			return ground - 0.4   # the sheet's last ring always ends under the ground
+		return minf(wnear[c] - 0.05, ground - 0.25)
+	var best := DRY
+	var ci := c % NA
+	var cj := c / NA
+	for d in 8:
+		var ni: int = ci + DX[d]
+		var nj: int = cj + DZ[d]
+		if ni < 0 or nj < 0 or ni >= NA or nj >= NA:
+			continue
+		best = maxf(best, wl[nj * NA + ni])
+	if best == DRY:
+		return ha[c] - 1.5
+	# never above the ground there (the render grid has the same 5 m cells): where a bank
+	# is lower than the stream, the sheet slips under it instead of ending in a square edge
+	var ground := heights[c] if heights.size() == NA * NA else ha[c]
+	return minf(best - 0.05, ground - 0.25)
+
+
+## Rivers and lakes on the analysis grid: wet vertices at the water level, dry ones at
+## the level of the water beside them, so the banks cut the surface off.
 func water_mesh() -> ArrayMesh:
 	var b := MeshBuilder.new()
 	var vid := PackedInt32Array()
@@ -840,15 +899,17 @@ func water_mesh() -> ArrayMesh:
 	for j in NA - 1:
 		for i in NA - 1:
 			var quad := [j * NA + i, j * NA + i + 1, (j + 1) * NA + i + 1, (j + 1) * NA + i]
+			# the sheet reaches a little under the banks, so the shoreline is where the
+			# ground rises through it (following the land), not the grid cells' edges
 			var any := false
 			for c in quad:
-				if wl[c] != DRY:
+				if wl[c] != DRY or (dw.size() == NA * NA and dw[c] < SHEET_REACH):
 					any = true
 			if not any:
 				continue
 			for c in quad:
 				if vid[c] < 0:
-					var y := wl[c] if wl[c] != DRY else ha[c] - 1.5
+					var y := wl[c] if wl[c] != DRY else _shore_level(c)
 					vid[c] = b.add(Vector3(_ax(c % NA), y, _ax(c / NA)), Vector3.UP, Color.WHITE)
 			b.quad(vid[quad[0]], vid[quad[1]], vid[quad[2]], vid[quad[3]])
 	return b.commit()
