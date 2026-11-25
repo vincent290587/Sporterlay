@@ -562,6 +562,8 @@ func build_understory(parent: Node3D, mat: Material, grass_mat: Material, ledges
 		return land.canopy_conifer[c] * 0.35 * exclude[c],
 		func(px: float, pz: float, _c: int) -> void:
 			var s := rng.randf_range(0.5, 1.4) * rock_s
+			if land.road_distance_at(px, pz) < Route.HALF_WIDTH + 0.5 + s * (1.2 if mk else 0.6):
+				return   # big rocks keep clear of the road by their own size
 			rocks.pick(rng).put_basis(Vector3(px, land.height_at(px, pz) - s * 0.15, pz), _slope_basis(px, pz, rng.randf() * TAU, s, s * 0.7, 0.8),
 				Color(0.80, 0.92, 0.72).darkened(rng.randf() * 0.2)))
 	# logs and stumps in old forest, logs lying along the slope; mushrooms in the damp
@@ -587,12 +589,16 @@ func build_understory(parent: Node3D, mat: Material, grass_mat: Material, ledges
 			var s := rng.randf_range(0.3, 1.2) * rock_s
 			var col: Color = land.scree_col[c]
 			var tint := Color(col.r / 0.6, col.g / 0.6, col.b / 0.6).darkened(rng.randf() * 0.15)
+			if land.road_distance_at(px, pz) < Route.HALF_WIDTH + 0.5 + s * (1.2 if mk else 0.6):
+				return   # big rocks keep clear of the road by their own size
 			crumbled.pick(rng).put_basis(Vector3(px, land.height_at(px, pz) - s * 0.1, pz), _slope_basis(px, pz, rng.randf() * TAU, s, s * 0.7, 0.9), tint))
 	# boulders on open, high and dry ground
 	_layer(16.0, 1.5, func(c: int) -> float:
 		return (0.04 + land.alpine[c] * 0.3 + land.heath[c] * 0.12) * smoothstep(4.0, 9.0, land.dw[c]),
 		func(px: float, pz: float, _c: int) -> void:
 			var s := rng.randf_range(0.8, 3.5) * rock_s
+			if land.road_distance_at(px, pz) < Route.HALF_WIDTH + 0.5 + s * (1.2 if mk else 0.6):
+				return   # big rocks keep clear of the road by their own size
 			boulders.pick(rng).put_basis(Vector3(px, land.height_at(px, pz) - s * 0.15, pz), _slope_basis(px, pz, rng.randf() * TAU, s, s * rng.randf_range(0.6, 1.0), 0.6),
 				Color(1, 1, 1).darkened(rng.randf() * 0.2)))
 	# plants on the cliff ledges

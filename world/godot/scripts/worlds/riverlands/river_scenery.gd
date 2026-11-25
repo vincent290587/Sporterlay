@@ -162,16 +162,25 @@ static func _grass_kind(land: RiverLand, patches: FastNoiseLite, x: float, z: fl
 	var tall_w := (land.field(land.wet, x, z) * 1.6 + moist * 0.7 + 4.0 * fo * (1.0 - fo) * 0.4 + maxf(n, 0.0) * 1.4) \
 		* smoothstep(Route.HALF_WIDTH + 2.0, Route.HALF_WIDTH + 6.0, rd)
 	var avg_w := 0.9
-	var pick := rng.randf() * (short_w + tall_w + avg_w)
+	# flowering grass: drifts in sunny, open, fairly moist meadows
+	var bloom_w := smoothstep(0.05, 0.35, patches.get_noise_2d(x * 0.4 + 300.0, z * 0.4)) * 6.0 \
+		* (1.0 - fo) * smoothstep(0.05, 0.3, moist) * smoothstep(0.25, 0.45, land.field(land.sun, x, z)) \
+		* smoothstep(Route.HALF_WIDTH + 1.5, Route.HALF_WIDTH + 4.0, rd)
+	var pick := rng.randf() * (short_w + tall_w + avg_w + bloom_w)
 	if pick < short_w:
 		return Meshes.GRASS_SHORT
 	if pick < short_w + tall_w:
 		return Meshes.GRASS_TALL
+	if pick < short_w + tall_w + bloom_w:
+		return Meshes.GRASS_FLOWERING
 	return Meshes.GRASS_AVERAGE
 
 
 static func _grass(parent: Node3D, land: RiverLand, route: Route, rng: RandomNumberGenerator, mat: Material) -> void:
 	var kinds := [Instancer.new(GRASS_CHUNK), Instancer.new(GRASS_CHUNK), Instancer.new(GRASS_CHUNK)]
+	# autumn seed plumes: cream, rust, and the purple haze
+	var bloom := FlowerGrass.new(rng, [["plume", Color(0.93, 0.88, 0.74)], ["plume", Color(0.74, 0.52, 0.4)],
+		["haze", Color(0.66, 0.42, 0.78)]], mat, GRASS_CHUNK, Vector3(0.18, 0.0, 0.0))
 	var patches := FastNoiseLite.new()
 	patches.seed = rng.randi()
 	patches.frequency = 0.03
@@ -187,6 +196,7 @@ static func _grass(parent: Node3D, land: RiverLand, route: Route, rng: RandomNum
 			own.append([Meshes.flowers(rng, c), mat])
 		flowers = MegaKit.Mix.new(GRASS_CHUNK, own)
 	var hw := Route.HALF_WIDTH
+	var bloom_at := {}   # flowering clumps within 40 m of the road, per 200 m (for the log)
 	for m in route.count():
 		var p := route.points[m]
 		var t := route.tangent_index(m)
@@ -214,7 +224,13 @@ static func _grass(parent: Node3D, land: RiverLand, route: Route, rng: RandomNum
 				dir = land.wind_at(pos.x, pos.z)
 			var rd := land.road_distance_at(pos.x, pos.z)
 			var kind := _grass_kind(land, patches, pos.x, pos.z, rd, rng)
-			(kinds[kind] as Instancer).put(pos, _yaw_to(dir) + rng.randf_range(-0.4, 0.4), rng.randf_range(0.8, 1.3), rng.randf_range(0.7, 1.15), col)
+			if kind == Meshes.GRASS_FLOWERING:
+				bloom.put(rng, pos, _yaw_to(dir) + rng.randf_range(-0.4, 0.4), col)
+				if absf(side) < 40.0:
+					var bin := int(m * route.spacing / 200.0)
+					bloom_at[bin] = bloom_at.get(bin, 0) + 1
+			else:
+				(kinds[kind] as Instancer).put(pos, _yaw_to(dir) + rng.randf_range(-0.4, 0.4), rng.randf_range(0.8, 1.3), rng.randf_range(0.7, 1.15), col)
 			var meadow := clampf(1.0 - fo * 1.5 - land.field(land.heath, pos.x, pos.z) * 0.5 - land.field(land.wet, pos.x, pos.z) - al, 0.0, 1.0)
 			if rng.randf() < meadow * 0.06:
 				flowers.pick(rng).put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.2), rng.randf_range(0.8, 1.2), Color.WHITE)
@@ -222,7 +238,17 @@ static func _grass(parent: Node3D, land: RiverLand, route: Route, rng: RandomNum
 	for k in 3:
 		var inst: Instancer = kinds[k]
 		counts.append(inst.build(parent, Meshes.grass(rng, k, Vector3(0.18, 0.0, 0.0)), mat, GRASS_VISIBLE, false, 0.0, "grass"))
-	print("  grass clumps: short %d, average %d, tall %d" % counts)
+	counts.append(bloom.build(parent, GRASS_VISIBLE))
+	print("  grass clumps: short %d, average %d, tall %d, flowering %d" % counts)
+	var best := []
+	for bin in bloom_at:
+		best.append([bloom_at[bin], bin])
+	best.sort()
+	best.reverse()
+	var where := []
+	for i in mini(4, best.size()):
+		where.append("%d m" % (best[i][1] * 200))
+	print("  flowering drifts by the road at: ", ", ".join(where))
 	print("  flowers: ", flowers.build(parent, GRASS_VISIBLE, false, "grass"))
 
 

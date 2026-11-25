@@ -55,6 +55,16 @@ func build(parent: Node3D, seed: int) -> void:
 			var p := Vector3(-66.0 + kind * 6.0 + rng.randf_range(-2.4, 2.4), 0.0, rng.randf_range(-3.0, 3.0))
 			inst.put(p, rng.randf() * TAU, rng.randf_range(0.8, 1.3), rng.randf_range(0.7, 1.15), Color(0.56, 0.70, 0.30))
 		inst.build(parent, Meshes.grass(rng, kind), grass_mat, 0.0, false)
+	var heads := [["plume", Color(0.93, 0.88, 0.74)], ["plume", Color(0.74, 0.52, 0.4)], ["haze", Color(0.66, 0.42, 0.78)],
+		["star", Color(0.55, 0.35, 0.85)], ["star", Color(0.97, 0.97, 0.93)], ["star", Color(1.0, 0.85, 0.2)]]
+	for k in heads.size():
+		var m: ShaderMaterial = grass_mat.duplicate()
+		m.set_shader_parameter("head_color", heads[k][1])
+		var inst := Instancer.new(32.0)
+		for _i in 70:
+			inst.put(Vector3(-75.0 + k * 5.0 + rng.randf_range(-2.0, 2.0), 0.0, rng.randf_range(-10.0, -6.0)), rng.randf() * TAU,
+				rng.randf_range(0.8, 1.2), rng.randf_range(0.75, 1.1), Color(0.56, 0.70, 0.30))
+		inst.build(parent, Meshes.grass(rng, Meshes.GRASS_FLOWERING, Vector3.ZERO, heads[k][0]), m, 0.0, false)
 
 	# MegaKit trees at each level of detail (--megakit=lods): columns per tier
 	if "--megakit=lods" in OS.get_cmdline_user_args() and MegaKit.available():

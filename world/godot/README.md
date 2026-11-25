@@ -105,7 +105,7 @@ come.
 | Path | What |
 |---|---|
 | `scripts/main.gd` | Picks and builds a world, status line, options, keys |
-| `scripts/common/` | Shared: `MegaKit` (imported models in our style), `PowerLink` (UDP), `Rider` (physics, camera), `Route` (road from a rough loop, grade cap), `Roads` (road surface), `Look` (sky, fog, sun), `Lod` (level-of-detail manager), `Instancer` (chunked instances, LOD tiers), `TreeGen` (branching trees, conifers), `MeshBuilder`, `Meshes` (props), `MinHeap` |
+| `scripts/common/` | Shared: `MegaKit` (imported models in our style), `PowerLink` (UDP), `Rider` (physics, camera), `Route` (road from a rough loop, grade cap), `Roads` (road surface), `Look` (sky, fog, sun), `Lod` (level-of-detail manager), `Instancer` (chunked instances, LOD tiers), `TreeGen` (branching trees, conifers), `FlowerGrass` (flowering grass drifts), `MeshBuilder`, `Meshes` (props), `MinHeap` |
 | `scripts/worlds/gallery/` | `GalleryWorld`: all tree models side by side |
 | `scripts/worlds/valley/` | `ValleyWorld`, `ValleyTerrain`, `ValleyScenery` |
 | `scripts/worlds/riverlands/` | `RiverWorld`, `RiverLand` (terrain, water, maps, biomes), `RiverRoad` (A*), `RiverCliffs` (strata skin, scree, ledges), `RiverEcology` (species, competition, age, understory), `RiverScenery` (order, ground cover, bridges, fences) |

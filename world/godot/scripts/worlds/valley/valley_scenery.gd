@@ -64,16 +64,21 @@ static func _grass_kind(terrain: ValleyTerrain, patches: FastNoiseLite, x: float
 		+ maxf(-n, 0.0) * 1.2
 	var tall_w := ((1.0 - smoothstep(ValleyTerrain.WATER + 2.0, 5.0, h)) * 1.4 + maxf(n, 0.0) * 1.4) \
 		* smoothstep(Route.HALF_WIDTH + 2.0, Route.HALF_WIDTH + 6.0, rd)
-	var pick := rng.randf() * (short_w + tall_w + 0.9)
+	var bloom_w := smoothstep(0.1, 0.4, patches.get_noise_2d(x * 0.4 + 300.0, z * 0.4)) * 2.0 \
+		* (1.0 - smoothstep(30.0, 60.0, h)) * smoothstep(Route.HALF_WIDTH + 1.5, Route.HALF_WIDTH + 4.0, rd)
+	var pick := rng.randf() * (short_w + tall_w + 0.9 + bloom_w)
 	if pick < short_w:
 		return Meshes.GRASS_SHORT
 	if pick < short_w + tall_w:
 		return Meshes.GRASS_TALL
+	if pick < short_w + tall_w + bloom_w:
+		return Meshes.GRASS_FLOWERING
 	return Meshes.GRASS_AVERAGE
 
 
 static func _grass(parent: Node3D, terrain: ValleyTerrain, route: Route, rng: RandomNumberGenerator) -> void:
 	var kinds := [Instancer.new(GRASS_CHUNK), Instancer.new(GRASS_CHUNK), Instancer.new(GRASS_CHUNK)]
+	var bloom_pending := []   # placed once the material exists (it's made below)
 	var patches := FastNoiseLite.new()
 	patches.seed = 77
 	patches.frequency = 0.03
@@ -102,14 +107,23 @@ static func _grass(parent: Node3D, terrain: ValleyTerrain, route: Route, rng: Ra
 				flowers.pick(rng).put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.2), rng.randf_range(0.8, 1.2), Color.WHITE)
 			else:
 				var kind := _grass_kind(terrain, patches, pos.x, pos.z, h, terrain.road_distance_at(pos.x, pos.z), rng)
-				(kinds[kind] as Instancer).put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.3), rng.randf_range(0.7, 1.1), col)
+				if kind == Meshes.GRASS_FLOWERING:
+					bloom_pending.append([pos, rng.randf() * TAU, col])
+				else:
+					(kinds[kind] as Instancer).put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.3), rng.randf_range(0.7, 1.1), col)
 	var mat := ShaderMaterial.new()
 	mat.shader = GRASS
 	var counts := []
 	for k in 3:
 		var inst: Instancer = kinds[k]
 		counts.append(inst.build(parent, Meshes.grass(rng, k), mat, GRASS_VISIBLE, false, 0.0, "grass"))
-	print("grass clumps: short %d, average %d, tall %d" % counts)
+	# summer meadow flowers: purple, white, yellow stars, and the purple haze
+	var bloom := FlowerGrass.new(rng, [["star", Color(0.55, 0.35, 0.85)], ["star", Color(0.97, 0.97, 0.93)],
+		["star", Color(1.0, 0.85, 0.2)], ["haze", Color(0.66, 0.42, 0.78)]], mat, GRASS_CHUNK)
+	for b: Array in bloom_pending:
+		bloom.put(rng, b[0], b[1], b[2])
+	counts.append(bloom.build(parent, GRASS_VISIBLE))
+	print("grass clumps: short %d, average %d, tall %d, flowering %d" % counts)
 	if flowers != null:
 		print("flowers: ", flowers.build(parent, GRASS_VISIBLE, false, "grass"))
 	Lod.add_param("grass", mat, "fade_start", 130.0)

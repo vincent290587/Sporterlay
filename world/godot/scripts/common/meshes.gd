@@ -9,7 +9,7 @@ const NEEDLE_DARK := Color(0.14, 0.30, 0.20)
 const NEEDLE_LIGHT := Color(0.26, 0.48, 0.28)
 
 
-enum { GRASS_SHORT, GRASS_AVERAGE, GRASS_TALL }
+enum { GRASS_SHORT, GRASS_AVERAGE, GRASS_TALL, GRASS_FLOWERING }
 
 ## Grass types: blades per clump, clump radius, blade width and height ranges (m),
 ## segments per blade, random lean, sway strength (UV2.x, read by the grass shader)
@@ -21,6 +21,17 @@ const GRASS_TYPES := {
 		"segments": 2, "lean": 0.25, "sway": 1.0, "tint": Color(1.0, 1.0, 1.0)},
 	GRASS_TALL: {"blades": 9, "radius": 0.4, "width": Vector2(0.018, 0.03), "height": Vector2(1.0, 1.6),
 		"segments": 4, "lean": 0.28, "sway": 1.6, "tint": Color(1.0, 0.96, 0.78)},
+	GRASS_FLOWERING: {"blades": 9, "radius": 0.4, "width": Vector2(0.018, 0.03), "height": Vector2(0.9, 1.4),
+		"segments": 4, "lean": 0.22, "sway": 1.5, "tint": Color(1.0, 0.98, 0.84)},
+}
+
+## Flower heads on GRASS_FLOWERING: share of blades with a head, and head size. The
+## colour isn't in the mesh: the grass shader paints head vertices (UV2.y > 0) with its
+## `head_color`, so one model serves every colour (one material each).
+const HEADS := {
+	"plume": {"share": 0.85, "length": Vector2(0.16, 0.26), "width": Vector2(0.04, 0.065)},  # fluffy seed heads
+	"haze": {"share": 1.0, "length": Vector2(0.24, 0.38), "width": Vector2(0.022, 0.035)},  # fine, airy plumes en masse
+	"star": {"share": 0.6, "radius": Vector2(0.07, 0.11)},                                   # five-petal flowers
 }
 
 
@@ -33,7 +44,7 @@ static func grass_clump(rng: RandomNumberGenerator, lean_all := Vector3.ZERO) ->
 ## grass shader bends by it); colour comes from the instance times the type's tint.
 ## `lean_all` tips every blade the same way (local +x), for grass combed by the wind or
 ## leaning to water; tall blades curve over more as they go up.
-static func grass(rng: RandomNumberGenerator, kind: int, lean_all := Vector3.ZERO) -> ArrayMesh:
+static func grass(rng: RandomNumberGenerator, kind: int, lean_all := Vector3.ZERO, head := "") -> ArrayMesh:
 	var t: Dictionary = GRASS_TYPES[kind]
 	var b := MeshBuilder.new()
 	var segs: int = t.segments
@@ -61,6 +72,9 @@ static func grass(rng: RandomNumberGenerator, kind: int, lean_all := Vector3.ZER
 				var tip := b.add(p, Vector3.UP, tint, uv)
 				b.uv2s.append(sway)
 				b.tri_raw(prev_l, prev_r, tip)
+				if head != "" and rng.randf() < float(HEADS[head].share):
+					var below := base + lean * 0.5625 + Vector3(0.0, h * 0.75, 0.0)
+					_head(b, rng, head, p, (p - below).normalized(), t.sway)
 			else:
 				var w := 1.0 - f * 0.65
 				var l := b.add(p - side * w, Vector3.UP, tint, Vector2(0.0, f))
@@ -73,6 +87,53 @@ static func grass(rng: RandomNumberGenerator, kind: int, lean_all := Vector3.ZER
 				prev_l = l
 				prev_r = rr
 	return b.commit()
+
+
+## A flower head at a blade's tip, going on along `dir`. Head vertices carry UV2.y = 1
+## (2 for a star's centre); the shader colours them. UV.y stays near 1, so they sway.
+static func _head(b: MeshBuilder, rng: RandomNumberGenerator, head: String, tip: Vector3, dir: Vector3, sway: float) -> void:
+	var h: Dictionary = HEADS[head]
+	var white := Color.WHITE
+	if head == "star":
+		var r := rng.randf_range(h.radius.x, h.radius.y)
+		# faces mostly sideways (seen from eye height), a random way, tilted up a little
+		var a0 := rng.randf() * TAU
+		var up := (Vector3(cos(a0), 0.0, sin(a0)) + Vector3.UP * 0.6).normalized()
+		var side := up.cross(Vector3.UP).normalized()
+		var side2 := up.cross(side)
+		var c := b.add(tip, Vector3.UP, white, Vector2(0.5, 1.0))
+		b.uv2s.append(Vector2(sway, 2.0))
+		var ring := PackedInt32Array()
+		for k in 10:
+			var a := TAU * k / 10
+			var rr := r if k % 2 == 0 else r * 0.45   # five petals
+			ring.append(b.add(tip + (side * cos(a) + side2 * sin(a)) * rr, Vector3.UP, white, Vector2(0.5, 1.0)))
+			b.uv2s.append(Vector2(sway, 1.0))
+		for k in 10:
+			b.tri_raw(c, ring[k], ring[(k + 1) % 10])
+		return
+	# plume / haze: two crossed cards continuing the blade, widest in the middle
+	var length := rng.randf_range(h.length.x, h.length.y)
+	var width := rng.randf_range(h.width.x, h.width.y)
+	var spin := rng.randf() * TAU
+	for k in 2:
+		var a := spin + PI * 0.5 * k
+		var side := dir.cross(Vector3(cos(a), 0.0, sin(a))).normalized() * width
+		var bend := Vector3(cos(spin), 0.0, sin(spin)) * length * 0.15   # plumes nod a little
+		var pts := [tip, tip + dir * length * 0.45 + bend * 0.3, tip + dir * length + bend]
+		var ws := [0.25, 1.0, 0.0]
+		var row := []
+		for q in 3:
+			var pq: Vector3 = pts[q]
+			var w: float = ws[q]
+			var l := b.add(pq - side * w, Vector3.UP, white, Vector2(0.0, 1.0))
+			var rr := b.add(pq + side * w, Vector3.UP, white, Vector2(1.0, 1.0))
+			b.uv2s.append(Vector2(sway, 1.0))
+			b.uv2s.append(Vector2(sway, 1.0))
+			row.append([l, rr])
+		for q in 2:
+			b.tri_raw(row[q][0], row[q][1], row[q + 1][1])
+			b.tri_raw(row[q][0], row[q + 1][1], row[q + 1][0])
 
 
 ## An ellipsoid with a jittered surface, shaded dark underneath and light on top.

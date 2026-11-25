@@ -9,6 +9,7 @@ render_mode cull_disabled, world_vertex_coords;
 uniform vec2 wind_dir = vec2(0.8, 0.6);
 uniform float fade_start = 130.0;
 uniform float fade_end = 190.0;
+uniform vec3 head_color : source_color = vec3(0.85, 0.8, 0.7);   // flower heads (UV2.y > 0)
 
 varying vec3 wpos;
 
@@ -31,6 +32,12 @@ void fragment() {
 	vec3 c = mix(base * 0.6, base * 1.2 + vec3(0.05, 0.05, 0.0), UV.y);
 	c *= 1.0 + (vnoise(wpos.xz * 0.06) - 0.5) * 0.16;
 	ALBEDO = srgb_to_linear(c);
+	if (UV2.y > 0.5) {
+		// flower head: its own colour, varied a little per head; a star's centre is golden
+		float v = vnoise(wpos.xz * 3.0 + wpos.y * 5.0);
+		vec3 h = head_color * mix(0.8, 1.15, v);
+		ALBEDO = UV2.y > 1.5 ? mix(h, vec3(0.95, 0.7, 0.15), 0.85) : h;
+	}
 	NORMAL = normalize((VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;

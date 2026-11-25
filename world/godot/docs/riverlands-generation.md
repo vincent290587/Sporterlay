@@ -469,8 +469,17 @@ Chosen by eye: its yellow and pink flowers, clover and grass are left out.
   | average | 9 | 35-80 cm | everywhere, weight 0.9 |
   | tall, thin | 9 narrow, 4 segments, curving over | 1.0-1.6 m | wet and moist ground, forest edges; not within ~6 m of the road |
 
+  | flowering | 9 narrow, 4 segments, heads on most blades | 0.9-1.4 m | drifts in open, sunny, fairly moist meadows, back from the road |
+
   A slow patch noise (~30 m) adds to short on one side and tall on the other, so types
-  grow in clumps. Seed 7: 210k short, 226k average, 118k tall.
+  grow in clumps. Flowering grass (`FlowerGrass`) carries heads whose vertices are
+  marked with UV2.y; the grass shader paints them with its material's `head_color`, so
+  one model serves every colour and each colour is one material. A slow drift noise
+  picks the colour, so each drift is mostly one: in Riverlands cream and rust seed
+  plumes and a purple haze (fine plumes on every blade); in the valley purple, white and
+  yellow five-petal stars (facing sideways, golden centres) and the purple haze. Seed 7:
+  196k short, 202k average, 101k tall, 54k flowering. The log names the stretches of
+  road with the densest drifts.
 - Grass along the road (200 clumps per 2 m of road, out to 200 m, drawn to 210 m and
   sinking into the ground from 130 to 190 m), thinner in forest
   and rock. Its colour is the biome ground colour, turned rust in wetland 8-20 m from the
