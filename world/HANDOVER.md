@@ -61,8 +61,9 @@ A level-of-detail manager holds the frame rate. It cuts the least important thin
    is ~65 fps at "high", and the manager should hold 60 regardless.
 4. Ride it with Sporterlay:
    - start Sporterlay (`run.bat`);
-   - tray → Extras → *Send power to the virtual world*;
-   - start the world without `--bench`, and check that the status line shows
+   - tray → Extras → Virtual world → *Start the virtual world* (picks world and seed
+     there; it finds Godot in Downloads by itself);
+   - check that the status line shows
      `[Sporterlay]` and the rider moves.
 5. Check that **Sporterlay's HUD stays above the world's fullscreen window**. The world
    opens in borderless fullscreen, which should allow it, but it's never been checked on
@@ -114,7 +115,6 @@ All go after `--` on the command line:
 - **Possible next steps** (none started):
   - streams in the valley;
   - more worlds;
-  - picking the world and seed from Sporterlay's tray;
   - snow or other seasons.
 
 ## Where things are documented

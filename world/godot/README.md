@@ -67,7 +67,13 @@ Sporterlay ──UDP 127.0.0.1:47810, 4 Hz──▶ PowerLink ──▶ Rider (o
    (`RiverWorld`, `Rider`, `Lod`…): `main.gd` fails to parse and the window stays black.
 3. Open `project.godot` in it and press Play (F5), or from a shell:
    `Godot_v4.7.2-stable_win64.exe --path world/godot`
-4. In Sporterlay: tray → Extras → *Send power to the virtual world*.
+4. In Sporterlay: tray → Extras → Virtual world → *Send power to the virtual world*.
+
+Or let Sporterlay start it: tray → Extras → Virtual world → *Start the virtual world*, with the
+world and seed picked in the same submenu (a change restarts a running world). Sporterlay uses
+`build/SporterlayWorld.exe` when it exists, otherwise a Godot 4 binary it finds in Downloads,
+Desktop, `C:\Tools\Godot` and similar, or the program chosen with *Choose the world program…*.
+It imports the project on the first start and closes the world when Sporterlay quits.
 
 Keys: **Esc** quit, **H** hide the status line, **F3** frame rate, **F4** detail levels, **F2** next world, **F11** fullscreen/windowed,
 **Up/Down** manual power while Sporterlay isn't sending.

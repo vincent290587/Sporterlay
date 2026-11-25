@@ -97,6 +97,9 @@ class Settings:
     # virtual world (world/godot): raw power out over UDP to localhost, nothing back
     world: bool = False
     world_port: int = 47810
+    world_name: str = "riverlands"  # which world the tray starts (--world=)
+    world_seed: int = 7             # its variant (--seed=)
+    world_program: str = ""         # exported exe or Godot binary; empty = look for one
 
     @classmethod
     def load(cls) -> "Settings":

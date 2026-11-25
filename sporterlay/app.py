@@ -6,6 +6,7 @@ import argparse
 import datetime as dt
 import logging
 import os
+import random
 import sys
 import threading
 import time
@@ -31,7 +32,7 @@ from .ride import Ride
 from .settings import Settings, config_dir
 from .summary import summarize
 from .webscreen import WebScreen, ride_state, workout_key, workout_payload
-from .world import WorldLink
+from .world import WORLDS, WorldLink, WorldProcess, find_program
 from .sources import AntSource, DemoSource
 from .workout import parse_zwo
 from .workoutdb import load_workout_db
@@ -182,6 +183,7 @@ class Signals(QObject):
     eftp_done = pyqtSignal(object, object, object)  # eFTP (int) or None, AthleteInfo or None, error
     zwift = pyqtSignal(bool)  # Zwift connected / gone
     fan_address = pyqtSignal(str)  # Headwind found: remember it
+    world = pyqtSignal(str)  # world launcher status, to flash
 
 
 class App:
@@ -217,6 +219,7 @@ class App:
         self.signals.upload_done.connect(self._upload_done)
         self.signals.eftp_done.connect(self._eftp_done)
         self.signals.zwift.connect(lambda on: self.flash("Zwift connected" if on else "Zwift disconnected"))
+        self.signals.world.connect(lambda st: self.flash(f"Virtual world: {st}"))
         self.zwift = ZwiftShare(self.signals.zwift.emit) if self.settings.zwift_share else None
         self.signals.fan_address.connect(lambda a: self._set("fan_address", a))
         self.fan_profile = FanProfile.load(fan_profile_path())
@@ -230,6 +233,7 @@ class App:
         self._cue = None
         self.web = WebScreen(self.settings.web_port) if self.settings.web_screen else None
         self.world = WorldLink(self.settings.world_port) if self.settings.world else None
+        self.world_proc = WorldProcess(self.signals.world.emit)
         self.icu_workouts = []
         self.icu_status = ""
         self.click = None
@@ -1058,6 +1062,7 @@ class App:
             self.web.close()
         if self.world:
             self.world.close()
+        self.world_proc.stop()
         self.tray.hide()
         self.qapp.quit()
 
@@ -1186,7 +1191,7 @@ class App:
             grp.addAction(act(label, lambda key=key: self._set("now_playing", key),
                               checked=s.now_playing == key, menu=npm))
         act("Share power, cadence and HR with Zwift", self.toggle_zwift_share, checked=s.zwift_share, menu=xm)
-        act("Send power to the virtual world", self.toggle_world, checked=s.world, menu=xm)
+        self._world_menu(xm.addMenu("Virtual world"), act)
         fm = xm.addMenu("Fan (KICKR Headwind)")
         fan_state = ""
         if self.fan:
@@ -1259,6 +1264,62 @@ class App:
             self.world.close()
             self.world = None
             self.flash("Stopped sending power to the virtual world")
+
+    def _world_menu(self, vm, act):
+        s = self.settings
+        program = find_program(s.world_program)
+        running = self.world_proc.running
+        label = WORLDS.get(s.world_name, s.world_name)
+        if running:
+            act("Stop the virtual world", self.stop_world, menu=vm)
+            act("Restart it", self.start_world, menu=vm)
+        else:
+            act(f"Start the virtual world  ({label}, seed {s.world_seed})", self.start_world,
+                enabled=program is not None, menu=vm)
+        act("Send power to the virtual world", self.toggle_world, checked=s.world, menu=vm)
+        vm.addSeparator()
+        wm = vm.addMenu(f"World: {label}")
+        grp = QActionGroup(wm)
+        for key, name in WORLDS.items():
+            grp.addAction(act(name, lambda key=key: self.set_world("world_name", key),
+                              checked=s.world_name == key, menu=wm))
+        sm = vm.addMenu(f"Seed: {s.world_seed}")
+        grp = QActionGroup(sm)
+        for v in range(1, 11):
+            grp.addAction(act(str(v), lambda v=v: self.set_world("world_seed", v), checked=s.world_seed == v, menu=sm))
+        sm.addSeparator()
+        act("Random seed", lambda: self.set_world("world_seed", random.randint(11, 9999)), menu=sm)
+        vm.addSeparator()
+        act("Choose the world program…", self.choose_world_program, menu=vm)
+        info = self.world_proc.status if running and self.world_proc.status else (
+            str(program) if program else "World program not found: choose the exe or Godot")
+        act(info, lambda: None, enabled=False, menu=vm)
+
+    def start_world(self):
+        program = find_program(self.settings.world_program)
+        if program is None:
+            self.flash("Virtual world: program not found (tray → Extras → Virtual world)")
+            return
+        if not self.settings.world:
+            self.toggle_world()   # starting it means riding it
+        s = self.settings
+        self.world_proc.start(program, s.world_name, s.world_seed, s.world_port)
+
+    def stop_world(self):
+        self.world_proc.stop()
+        self.flash("Virtual world closed")
+
+    def set_world(self, key, value):
+        self._set(key, value)
+        if self.world_proc.running:
+            self.start_world()   # restart with the new world / seed
+
+    def choose_world_program(self):
+        start = self.settings.world_program or str(Path.home())
+        path, _ = QFileDialog.getOpenFileName(None, "Choose SporterlayWorld.exe or a Godot 4 binary", start,
+                                              "Programs (*.exe);;All files (*)")
+        if path:
+            self._set("world_program", path)
 
     def _toggle_upload(self):
         self._toggle("icu_auto_upload")
