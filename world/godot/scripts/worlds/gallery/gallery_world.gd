@@ -46,6 +46,20 @@ func build(parent: Node3D, seed: int) -> void:
 			mi.mesh = models[lod]
 			mi.position = Vector3((k - (makers.size() - 1) * 0.5) * 11.0, 0.0, -lod * 14.0)
 			parent.add_child(mi)
+	# MegaKit trees at each level of detail (--megakit=lods): columns per tier
+	if "--megakit=lods" in OS.get_cmdline_user_args() and MegaKit.available():
+		var models := [["TwistedTree_1", MegaKit.TREE], ["TwistedTree_3", MegaKit.TREE], ["DeadTree_1", MegaKit.SOLID]]
+		for k in models.size():
+			for tier in 3:
+				var m := MegaKit.mesh(models[k][0], models[k][1], tier)
+				print("%s tier %d: %d triangles" % [models[k][0], tier, MegaKit.triangles(m)])
+				var mi := MeshInstance3D.new()
+				mi.mesh = m
+				mi.position = Vector3(80.0 + (tier - 1) * 14.0, 0.0, k * 18.0)
+				parent.add_child(mi)
+		_road()
+		return
+
 	# Quaternius' Stylized Nature MegaKit, as shipped, in front: trees, then small props
 	if DirAccess.dir_exists_absolute("res://assets/megakit"):
 		var trees := ["TwistedTree_1", "TwistedTree_2", "TwistedTree_3", "TwistedTree_5", "DeadTree_1", "DeadTree_3", "Bush_Common"]
@@ -57,7 +71,11 @@ func build(parent: Node3D, seed: int) -> void:
 		for k in small.size():
 			_place(parent, small[k], Vector3((k - (small.size() - 1) * 0.5) * 2.6, 0.0, 26.0))
 
-	# a road loop far around, so the rider has somewhere to be
+	_road()
+
+
+## A road loop far around, so the rider has somewhere to be.
+func _road() -> void:
 	var loop := PackedVector2Array()
 	for n in 64:
 		var ang := TAU * n / 64

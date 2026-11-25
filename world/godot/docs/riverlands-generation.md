@@ -336,6 +336,7 @@ patches stretch along slopes) and times the exclusions:
 | Spruce | forest × (ramp(height 60 → 180 m) + 1.2·(0.5 − sun) + 0.3·occlusion) |
 | Pine | forest × (0.5·ramp(height 20 → 120 m) + 0.6·ramp(sun 0.5 → 0.8) + 0.5·ridge) |
 | Birch | (0.5·forest + 0.25) × (1.2·e^(−dw/40) + 0.3·(1 − forest)) |
+| Twisted (MegaKit) | (0.25 + 0.5·forest) × (0.3 + 0.9·ramp(slope 0.08 → 0.2) + 0.6·ridge) × (1 − ramp(height 220 → 320 m)) × (1 − 0.7·e^(−dw/40)) |
 
 **Age** (`_age()`): cells where the best viability is over 0.28 are forest. Age is the
 signed chamfer distance to the forest edge: positive inside, negative outside.
@@ -354,6 +355,14 @@ bridges the steps. The viability radius is 6 m × size, so big old trees keep mo
 and young edges grow denser. That's the talk's density ramp.
 
 **Dead trees**: 4 % of trees deeper than 21 m into the forest.
+
+**Twisted trees** (with the MegaKit, `assets/megakit`): a fifth species competing like the
+others, on rugged ground (slopes just short of cliffs, ridges, away from water, not too
+high), with a 25 % larger radius since their crowns spread wide. Their five models keep
+their red leaves; their light and far versions are Godot's simplified meshes (about 50 %
+and 12 % of the triangles), and blobs in red beyond. Dead trees use the MegaKit's five
+dead-tree models when it's there. Seed 7: broadleaf 34.5k, birch 13.2k, pine 7.5k,
+twisted 5.1k, spruce 4.3k, dead 130.
 
 **Canopy** (`_canopy()`): each crown (0.6 × size, per 100 m²) is added to its cell in
 `canopy_broad` or `canopy_conifer`, blurred over 10 m, scaled ×1.5 and clamped. These drive
@@ -520,9 +529,9 @@ and prints the steepest 2 m step was used. It isn't kept in the repo.
   the map.
 - About 62k trees (each with a root mound), 280k understory props, 140k ferns and 550k
   grass clumps (seed 7, 7.4 km road). At 1080p on the dev box (RX 7900 XT), quality
-  high, auto off: 270 fps average, 186 fps 1 % low. With `--auto-lod=on --target-fps=60`
+  high, auto off: 258-272 fps average, 152-183 fps 1 % low (with the MegaKit trees). With `--auto-lod=on --target-fps=60`
   the manager spends the headroom on longer draw distances (~220 fps). Expected on the
-  ride PC (RTX 3060 Ti): about 90 fps at high; the manager holds 60 either way. Not
+  ride PC (RTX 3060 Ti): about 85 fps at high; the manager holds 60 either way. Not
   measured there yet.
 - The basin has many rivers, so the loop crosses water ~15 times, mostly small streams.
 

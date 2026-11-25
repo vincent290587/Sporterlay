@@ -31,7 +31,12 @@ static func reset() -> void:
 	_meshes.clear()
 
 
-## The model `name` as one mesh, its surfaces with our materials for `tier`.
+## Share of the triangles kept at each LOD tier (Godot's mesh simplifier picks them).
+const TIER_SHARE := [1.0, 0.3, 0.08]
+
+
+## The model `name` as one mesh, its surfaces with our materials for `tier`; tiers 1 and
+## 2 are simplified to TIER_SHARE of the triangles.
 static func mesh(name: String, style: int, tier := 0) -> ArrayMesh:
 	var key := "%s:%d:%d" % [name, style, tier]
 	if _meshes.has(key):
@@ -60,11 +65,30 @@ static func mesh(name: String, style: int, tier := 0) -> ArrayMesh:
 			arrays[Mesh.ARRAY_NORMAL] = normals
 			arrays[Mesh.ARRAY_TANGENT] = null
 			arrays[Mesh.ARRAY_COLOR] = null   # their baked darkening; only our instance tint applies
+			if tier > 0:
+				arrays[Mesh.ARRAY_INDEX] = _simplified(arrays, TIER_SHARE[tier])
 			out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 			out.surface_set_material(out.get_surface_count() - 1, material(tex, cut, style, tier))
 	root.free()
 	_meshes[key] = out
 	return out
+
+
+## Index list of the simplest Godot-generated LOD that keeps at least `share` of the
+## triangles (the vertices stay; unreferenced ones cost nothing to draw).
+static func _simplified(arrays: Array, share: float) -> PackedInt32Array:
+	var full: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var im := ImporterMesh.new()
+	im.add_surface(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	im.generate_lods(25.0, 60.0, [])
+	var best := full
+	for l in im.get_surface_lod_count(0):
+		var idx := im.get_surface_lod_indices(0, l)
+		if idx.size() >= full.size() * share and idx.size() < best.size():
+			best = idx
+	if best == full and im.get_surface_lod_count(0) > 0:
+		best = im.get_surface_lod_indices(0, im.get_surface_lod_count(0) - 1)   # can't go that low: simplest there is
+	return best
 
 
 static func _to_root(node: Node3D, root: Node3D) -> Transform3D:
@@ -111,10 +135,19 @@ static func material(tex: Texture2D, cut: bool, style: int, tier: int) -> Shader
 	return m
 
 
-## All materials made for `tier` (to register their fade distances with Lod).
-static func tier_materials(tier: int) -> Array:
+## The materials of a mesh's surfaces (to register their fade distances with Lod).
+static func materials_of(mesh: Mesh) -> Array:
 	var out := []
-	for key: String in _mats:
-		if key.ends_with(":%d" % tier):
-			out.append(_mats[key])
+	for s in mesh.get_surface_count():
+		var m := mesh.surface_get_material(s)
+		if m != null and not out.has(m):
+			out.append(m)
 	return out
+
+
+## Triangles in a mesh, for reports.
+static func triangles(mesh: Mesh) -> int:
+	var n := 0
+	for s in mesh.get_surface_count():
+		n += (mesh.surface_get_arrays(s)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+	return n

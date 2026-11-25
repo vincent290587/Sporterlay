@@ -94,6 +94,7 @@ func _load_world(at: float) -> void:
 		world_node.free()
 	lod.clear()
 	TreeGen.reset()
+	MegaKit.reset()
 	world_node = Node3D.new()
 	world_node.name = "World"
 	add_child(world_node)

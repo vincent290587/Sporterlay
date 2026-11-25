@@ -47,7 +47,9 @@ const BIRCH := [Color(0.62, 0.50, 0.10), Color(1.0, 0.86, 0.36)]
 const BUSH_TINTS := [Color(0.40, 0.58, 0.24), Color(0.80, 0.44, 0.20), Color(0.70, 0.26, 0.18), Color(0.82, 0.68, 0.28)]
 const FERN_TINTS := [Color(0.82, 0.62, 0.22), Color(0.72, 0.38, 0.16), Color(0.46, 0.62, 0.26)]
 
-enum { BROAD, PINE, SPRUCE, BIRCH_TREE, DEAD }
+enum { BROAD, PINE, SPRUCE, BIRCH_TREE, DEAD, TWISTED }
+const TWISTED_RADIUS := 1.25        # twisted trees spread wide: more room than others
+var growing := [BROAD, PINE, SPRUCE, BIRCH_TREE]   # species competing for ground (+ TWISTED with the MegaKit)
 
 
 ## Footprints of what's been placed: (x, z, radius among equals, radius against lower priority).
@@ -122,16 +124,24 @@ func _exclusions() -> void:
 func _viabilities(seed: int) -> void:
 	var na := RiverLand.NA
 	var noises := []
-	for k in 4:
+	for k in 4:   # one noise per original species (seeds kept so their patterns don't change)
 		var nz := FastNoiseLite.new()
 		nz.seed = seed + 200 + k
 		nz.frequency = 0.006
 		nz.fractal_octaves = 3
 		noises.append(nz)
-	for k in 4:
+	if MegaKit.available() and not growing.has(TWISTED):
+		growing.append(TWISTED)
+	for k in TWISTED + 1:
 		var v := PackedFloat32Array()
-		v.resize(na * na)
+		v.resize(na * na if growing.has(k) else 0)
 		viability.append(v)
+	var vt: PackedFloat32Array = viability[TWISTED]
+	var twisted := growing.has(TWISTED)
+	var tn := FastNoiseLite.new()
+	tn.seed = seed + 204
+	tn.frequency = 0.006
+	tn.fractal_octaves = 3
 	var vb: PackedFloat32Array = viability[BROAD]
 	var vp: PackedFloat32Array = viability[PINE]
 	var vs: PackedFloat32Array = viability[SPRUCE]
@@ -167,6 +177,12 @@ func _viabilities(seed: int) -> void:
 			# birch: near water, thin woods
 			vbi[c] = (forest * 0.5 + 0.25) * (1.2 * wet + 0.3 * (1.0 - forest)) \
 				* (0.75 + 0.5 * (noises[3] as FastNoiseLite).get_noise_2d(x + nx, z + nz)) * e
+			# twisted (MegaKit): rugged ground, steep slopes just short of cliffs, ridges,
+			# away from water, not too high
+			if twisted:
+				vt[c] = (0.25 + 0.5 * forest) * (0.3 + 0.9 * ramp(land.slope[c], 0.08, 0.2) + 0.6 * ridge) \
+					* (1.0 - ramp(h, 220.0, 320.0)) * (1.0 - 0.7 * wet) \
+					* (0.75 + 0.5 * tn.get_noise_2d(x + nx, z + nz)) * e
 
 
 ## Signed distance into the forest (m): positive inside, negative outside.
@@ -177,8 +193,8 @@ func _age() -> void:
 	inside.resize(n)
 	for c in n:
 		var best := 0.0
-		for v: PackedFloat32Array in viability:
-			best = maxf(best, v[c])
+		for k: int in growing:
+			best = maxf(best, (viability[k] as PackedFloat32Array)[c])
 		inside[c] = 1 if best > FOREST_EDGE else 0
 	var d_in := _distance(inside, 0)    # inside cells: distance to the nearest outside cell
 	var d_out := _distance(inside, 1)
@@ -237,7 +253,7 @@ func place_trees(seed: int) -> void:
 			var c := land.cell(px, pz)
 			var best := -1
 			var bv := 0.0
-			for k in 4:
+			for k: int in growing:
 				var v: float = (viability[k] as PackedFloat32Array)[c]
 				if v > bv:
 					bv = v
@@ -280,7 +296,7 @@ func place_trees(seed: int) -> void:
 			size_t = rng.randf() * 0.3     # young regrowth inside the forest
 		var idx := clampi(int(size_t * SIZES.size()), 0, SIZES.size() - 1)
 		var scale: float = SIZES[idx] * rng.randf_range(0.9, 1.1)   # bridges the size steps
-		var r := TREE_RADIUS * scale
+		var r := TREE_RADIUS * scale * (TWISTED_RADIUS if int(cand.z) == TWISTED else 1.0)
 		if not trees.free_at(cand.x, cand.y, false):
 			continue
 		trees.add(cand.x, cand.y, r, TREE_PRIORITY_RADIUS * scale)
@@ -288,7 +304,14 @@ func place_trees(seed: int) -> void:
 		if a > AGE_DEPTH * 0.85 and rng.randf() < 0.04:
 			species = DEAD
 		placed.append([cand.x, cand.y, species, scale, hue.get_noise_2d(cand.x, cand.y)])
-	print("  trees chosen: %d in %d ms" % [placed.size(), Time.get_ticks_msec() - t])
+	var per := {}
+	for p: Array in placed:
+		per[int(p[2])] = per.get(int(p[2]), 0) + 1
+	var names := {BROAD: "broadleaf", PINE: "pine", SPRUCE: "spruce", BIRCH_TREE: "birch", DEAD: "dead", TWISTED: "twisted"}
+	var parts := []
+	for k in per:
+		parts.append("%s %d" % [names[k], per[k]])
+	print("  trees chosen: %d in %d ms (%s)" % [placed.size(), Time.get_ticks_msec() - t, ", ".join(parts)])
 	_canopy()
 	land.deform_under_trees()
 
@@ -348,7 +371,13 @@ func build_trees(parent: Node3D, mat: Material) -> void:
 				sy = s * rng.randf_range(0.95, 1.15)
 			DEAD:
 				kind = "dead"
-		var key := "%s:%d" % [kind, rng.randi() % VARIANTS]
+			TWISTED:
+				kind = "twisted"
+				sy = s * rng.randf_range(0.9, 1.1)
+		var variants := VARIANTS
+		if MegaKit.available() and (kind == "twisted" or kind == "dead"):
+			variants = 5   # the MegaKit has five of each
+		var key := "%s:%d" % [kind, rng.randi() % variants]
 		if not sets.has(key):
 			sets[key] = Instancer.new(TREE_CHUNK)
 		(sets[key] as Instancer).put(pos, yaw, s, sy, tint)
@@ -375,14 +404,26 @@ func build_trees(parent: Node3D, mat: Material) -> void:
 			models = TreeGen.lods(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
 				return TreeGen.spruce(r, 16.0, 2.9, 9, Meshes.NEEDLE_DARK.darkened(0.1), Meshes.NEEDLE_LIGHT, lod))
 			far = Meshes.conifer_far(16.0, 2.7)
+		elif kind == "twisted":
+			var name := "TwistedTree_%d" % (int(key.get_slice(":", 1)) + 1)
+			models = [MegaKit.mesh(name, MegaKit.TREE, 0), MegaKit.mesh(name, MegaKit.TREE, 1), MegaKit.mesh(name, MegaKit.TREE, 2)]
+			far = Meshes.broadleaf_far(rng, RED[0], RED[1])
+		elif MegaKit.available():
+			var name := "DeadTree_%d" % (int(key.get_slice(":", 1)) + 1)
+			var d0 := MegaKit.mesh(name, MegaKit.SOLID, 0)
+			var d1 := MegaKit.mesh(name, MegaKit.SOLID, 1)
+			n += inst.build_tiers(parent, [[d0, null, 0.0, TREE_NEAR, true, MegaKit.materials_of(d0), 100.0],
+				[d1, null, TREE_NEAR, TREE_MID, false, MegaKit.materials_of(d1), 150.0]], "trees")
+			continue
 		else:
 			n += inst.build_tiers(parent, [[TreeGen.dead(rng), null, 0.0, TREE_MID, true, TreeGen.materials(4), 150.0]], "trees")
 			continue
 		var blob: ShaderMaterial = TreeGen.materials(3)[0]
+		var mk := kind == "twisted"
 		n += inst.build_tiers(parent, [
-			[models[0], null, 0.0, TREE_NEAR, true, TreeGen.materials(0), 100.0],
-			[models[1], null, TREE_NEAR, TREE_MID, false, TreeGen.materials(1), 150.0],
-			[models[2], null, TREE_MID, TREE_FAR, false, TreeGen.materials(2), 300.0],
+			[models[0], null, 0.0, TREE_NEAR, true, MegaKit.materials_of(models[0]) if mk else TreeGen.materials(0), 100.0],
+			[models[1], null, TREE_NEAR, TREE_MID, false, MegaKit.materials_of(models[1]) if mk else TreeGen.materials(1), 150.0],
+			[models[2], null, TREE_MID, TREE_FAR, false, MegaKit.materials_of(models[2]) if mk else TreeGen.materials(2), 300.0],
 			[far, blob, TREE_FAR, TREE_VISIBLE, false, [blob], 500.0]], "trees")
 	var nm := mounds.build(parent, Meshes.mound(), mat, MOUND_VISIBLE, false, 0.0, "mounds")
 	print("  trees: %d (%d models), root mounds: %d" % [n, sets.size(), nm])
