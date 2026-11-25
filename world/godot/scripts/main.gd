@@ -94,6 +94,7 @@ func _load_world(at: float) -> void:
 		world_node.free()
 	lod.clear()
 	TreeGen.reset()
+	MegaKit.reset()
 	world_node = Node3D.new()
 	world_node.name = "World"
 	add_child(world_node)
@@ -140,6 +141,17 @@ func _process(delta: float) -> void:
 			get_tree().quit()
 
 
+## Drop the static caches before the engine shuts down (otherwise Godot reports the
+## meshes and materials they hold as leaked at exit).
+func _exit_tree() -> void:
+	if world_node:
+		world_node.free()
+	TreeGen.reset()
+	MegaKit.reset()
+	lod.clear()
+	Lod._self = null
+
+
 func _report_bench() -> void:
 	var f := _bench_frames.duplicate()
 	f.sort()
@@ -153,16 +165,27 @@ func _report_bench() -> void:
 		low += d
 	low /= maxi(worst_1pc.size(), 1)
 	var size := DisplayServer.window_get_size()
-	print("bench %s: %dx%d, %d frames over %.0f s: average %.0f fps, 1%% low %.0f fps, worst frame %.1f ms, %.2f km ridden" % [
+	var lines := []
+	lines.append("bench %s: %dx%d, %d frames over %.0f s: average %.0f fps, 1%% low %.0f fps, worst frame %.1f ms, %.2f km ridden" % [
 		world_name, size.x, size.y, n, total, n / total, 1.0 / low, f[n - 1] * 1000.0, rider.odometer / 1000.0])
-	print("  video memory %.0f MB (textures %.0f, buffers %.0f), RAM %.0f MB, %d draw calls, %.1f M primitives in the last frame" % [
+	lines.append("  video memory %.0f MB (textures %.0f, buffers %.0f), RAM %.0f MB, %d draw calls, %.1f M primitives in the last frame" % [
 		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,
 		Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0,
 		Performance.get_monitor(Performance.RENDER_BUFFER_MEM_USED) / 1048576.0,
 		Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
 		Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
 		Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME) / 1e6])
-	print("  detail (%s, auto %s): %s" % [lod.quality, "on" if lod.auto else "off", lod.summary()])
+	lines.append("  detail (%s, auto %s): %s" % [lod.quality, "on" if lod.auto else "off", lod.summary()])
+	lines.append("  GPU %s, %s" % [RenderingServer.get_video_adapter_name(), OS.get_processor_name()])
+	var text := "\n".join(lines)
+	print(text)
+	# also kept in a file, so the result can't scroll away
+	var path := OS.get_user_data_dir().path_join("bench.txt")
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file:
+		file.store_string(text + "\n")
+		file.close()
+		print("  saved to ", path)
 	get_tree().quit()
 
 

@@ -16,6 +16,9 @@ const GRASS_PER_SAMPLE := 200
 const GRASS_REACH := 200.0
 const WOOD := Color(0.50, 0.36, 0.24)
 const RUST := Color(0.70, 0.42, 0.22)
+## MegaKit flowers we use: the purple ones only (by choice: not their yellow or pink
+## flowers, clover or grass)
+const FLOWERS := ["Plant_7", "Plant_7_Big"]
 
 
 static func build(parent: Node3D, land: RiverLand, route: Route, bridge: PackedByteArray, cliffs: RiverCliffs, seed: int) -> void:
@@ -24,7 +27,7 @@ static func build(parent: Node3D, land: RiverLand, route: Route, bridge: PackedB
 	var grass_mat := ShaderMaterial.new()
 	grass_mat.shader = GRASS
 	# what matters most when frame time is short (see Lod): the trees and grass by the road
-	for c in [["trees", 1.0], ["grass", 0.9], ["cliffs", 0.7], ["reeds", 0.6], ["bushes", 0.6],
+	for c in [["trees", 1.0], ["grass", 0.9], ["cliffs", 0.7], ["reeds", 0.6], ["bushes", 0.6], ["plants", 0.5],
 			["props", 0.45], ["boulders", 0.4], ["ferns", 0.4], ["mounds", 0.3]]:
 		Lod.category(c[0], c[1])
 	Lod.add_param("grass", grass_mat, "fade_start", 130.0)
@@ -34,7 +37,12 @@ static func build(parent: Node3D, land: RiverLand, route: Route, bridge: PackedB
 	eco.place_trees(seed)
 	eco.build_trees(parent, toon)
 	print("  trees built: %d ms" % (Time.get_ticks_msec() - t))
-	_mesh(parent, land.build_mesh(), toon, true)
+	var ground := ShaderMaterial.new()
+	ground.shader = preload("res://shaders/toon_ground.gdshader")
+	Lod.add_param("trees", ground, "canopy_near", 500.0)
+	Lod.add_param("trees", ground, "canopy_far", 1600.0)
+	_mesh(parent, land.build_mesh(), ground, true)
+	_far_woods(parent, land, seed)
 	print("  ground mesh: %d ms" % (Time.get_ticks_msec() - t))
 	cliffs.build_skin_tiles(parent, toon)
 	print("  cliff skin: %d ms" % (Time.get_ticks_msec() - t))
@@ -54,6 +62,52 @@ static func build(parent: Node3D, land: RiverLand, route: Route, bridge: PackedB
 	_fences(b, land, route, bridge, rng)
 	_mesh(parent, b.commit(), toon, true)
 	print("  small props: %d ms" % (Time.get_ticks_msec() - t))
+
+
+## Blob trees on the far hills around the basin, where the woods (RiverLand.skirt_woods)
+## are, out to FAR_WOODS m from the centre; cheap and shadowless.
+const FAR_WOODS := 4500.0
+
+
+static func _far_woods(parent: Node3D, land: RiverLand, seed: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed + 400
+	var toon := ShaderMaterial.new()
+	toon.shader = TOON
+	var palettes := [RiverEcology.GREEN, RiverEcology.YELLOW, RiverEcology.ORANGE, RiverEcology.RED]
+	var broad: Array[Instancer] = []
+	for _p in palettes:
+		broad.append(Instancer.new(500.0))
+	var pine := Instancer.new(500.0)
+	var cell := 14.0
+	var x := -FAR_WOODS
+	while x < FAR_WOODS:
+		var z := -FAR_WOODS
+		while z < FAR_WOODS:
+			var px := x + rng.randf() * cell
+			var pz := z + rng.randf() * cell
+			z += cell
+			if maxf(absf(px), absf(pz)) < RiverLand.HALF - 40.0 or Vector2(px, pz).length() > FAR_WOODS:
+				continue
+			var h := land.base(px, pz)
+			var e := 6.0
+			var ny := Vector3(land.base(px - e, pz) - land.base(px + e, pz), 2.0 * e, land.base(px, pz - e) - land.base(px, pz + e)).normalized().y
+			var w := land.skirt_woods(px, pz, h, ny)
+			if rng.randf() > w.a * 0.8:
+				continue
+			var s := rng.randf_range(1.0, 1.5)
+			var pos := Vector3(px, h - 0.5, pz)
+			if w.g > w.r and w.b > 0.15:   # the conifer colour
+				pine.put(pos, rng.randf() * TAU, s, s * rng.randf_range(1.0, 1.3), Color.WHITE)
+			else:
+				var k := clampi(int((land.woods.get_noise_2d(px * 4.0 + 900.0, pz * 4.0) * 0.5 + 0.5) * 4.0 + rng.randf_range(-0.6, 0.6)), 0, 3)
+				broad[k].put(pos, rng.randf() * TAU, s, s, Color.WHITE)
+		x += cell
+	var n := pine.build(parent, Meshes.conifer_far(12.6, 3.4), toon, FAR_WOODS + 1500.0, false, 0.0, "trees")
+	for k in palettes.size():
+		var pal: Array = palettes[k]
+		n += broad[k].build(parent, Meshes.broadleaf_far(rng, pal[0], pal[1]), toon, FAR_WOODS + 1500.0, false, 0.0, "trees")
+	print("  far woods: ", n)
 
 
 ## Yaw that turns local +x (the way leaning blades tip) towards `dir`.
@@ -98,9 +152,15 @@ static func _reeds(parent: Node3D, land: RiverLand, rng: RandomNumberGenerator, 
 static func _grass(parent: Node3D, land: RiverLand, route: Route, rng: RandomNumberGenerator, mat: Material) -> void:
 	var grass := Instancer.new(GRASS_CHUNK)
 	var petals := [Color(0.95, 0.95, 0.92), Color(0.98, 0.82, 0.22), Color(0.62, 0.42, 0.85)]
-	var flowers: Array[Instancer] = []
-	for _p in petals:
-		flowers.append(Instancer.new(GRASS_CHUNK))
+	var mk := MegaKit.available()
+	var flowers: MegaKit.Mix
+	if mk:   # the MegaKit's purple flowers
+		flowers = MegaKit.mix(GRASS_CHUNK, FLOWERS, MegaKit.PLANT)
+	else:
+		var own := []
+		for c: Color in petals:
+			own.append([Meshes.flowers(rng, c), mat])
+		flowers = MegaKit.Mix.new(GRASS_CHUNK, own)
 	var hw := Route.HALF_WIDTH
 	for m in route.count():
 		var p := route.points[m]
@@ -130,12 +190,9 @@ static func _grass(parent: Node3D, land: RiverLand, route: Route, rng: RandomNum
 			grass.put(pos, _yaw_to(dir) + rng.randf_range(-0.4, 0.4), rng.randf_range(0.8, 1.3), rng.randf_range(0.6, 1.2), col)
 			var meadow := clampf(1.0 - fo * 1.5 - land.field(land.heath, pos.x, pos.z) * 0.5 - land.field(land.wet, pos.x, pos.z) - al, 0.0, 1.0)
 			if rng.randf() < meadow * 0.06:
-				flowers[rng.randi() % flowers.size()].put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.2), rng.randf_range(0.8, 1.2), Color.WHITE)
+				flowers.pick(rng).put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.2), rng.randf_range(0.8, 1.2), Color.WHITE)
 	print("  grass clumps: ", grass.build(parent, Meshes.grass_clump(rng, Vector3(0.18, 0.0, 0.0)), mat, GRASS_VISIBLE, false, 0.0, "grass"))
-	var n := 0
-	for k in petals.size():
-		n += flowers[k].build(parent, Meshes.flowers(rng, petals[k]), mat, GRASS_VISIBLE, false, 0.0, "grass")
-	print("  flower clumps: ", n)
+	print("  flowers: ", flowers.build(parent, GRASS_VISIBLE, false, "grass"))
 
 
 static func band01(v: float, a: float, b: float, c: float, d: float) -> float:

@@ -334,8 +334,14 @@ patches stretch along slopes) and times the exclusions:
 |---|---|
 | Broadleaf | forest × (0.45 + 0.6·moist + 0.5·occlusion) × (1 − ramp(height 120 → 220 m)) |
 | Spruce | forest × (ramp(height 60 → 180 m) + 1.2·(0.5 − sun) + 0.3·occlusion) |
-| Pine | forest × (0.5·ramp(height 20 → 120 m) + 0.6·ramp(sun 0.5 → 0.8) + 0.5·ridge) |
+| Pine | forest × (0.5·ramp(height 20 → 120 m) + 0.6·ramp(sun 0.5 → 0.8) + 0.5·ridge) + 0.33·heath × (1 − ramp(slope 0.08 → 0.16)) (an open pine woodland on gentle heath) |
 | Birch | (0.5·forest + 0.25) × (1.2·e^(−dw/40) + 0.3·(1 − forest)) |
+| Twisted (MegaKit) | (0.25 + 0.5·forest) × (0.3 + 0.9·ramp(slope 0.08 → 0.2) + 0.6·ridge) × (1 − ramp(height 220 → 320 m)) × (1 − 0.7·e^(−dw/40)) |
+
+All species but the twisted trees are then multiplied by `1 − ramp(slope 0.15 → 0.21)`:
+trees keep off ground steeper than about 32-38°, which is left to the twisted trees, the
+cliffs and the scree. Lone trees in the open need a slope under 0.15 too. The log reports
+each species' count and how many stand on steep ground (slope > 0.16).
 
 **Age** (`_age()`): cells where the best viability is over 0.28 are forest. Age is the
 signed chamfer distance to the forest edge: positive inside, negative outside.
@@ -355,9 +361,31 @@ and young edges grow denser. That's the talk's density ramp.
 
 **Dead trees**: 4 % of trees deeper than 21 m into the forest.
 
+**Twisted trees** (with the MegaKit, `assets/megakit`): a fifth species competing like the
+others, on rugged ground (slopes just short of cliffs, ridges, away from water, not too
+high), with a 25 % larger radius since their crowns spread wide. Their five models keep
+their red leaves; their light and far versions are Godot's simplified meshes (about 50 %
+and 12 % of the triangles), and blobs in red beyond. Dead trees use the MegaKit's five
+dead-tree models when it's there. Seed 7: broadleaf 34.5k, birch 13.2k, pine 7.5k,
+twisted 5.1k, spruce 4.3k, dead 130.
+
 **Canopy** (`_canopy()`): each crown (0.6 × size, per 100 m²) is added to its cell in
 `canopy_broad` or `canopy_conifer`, blurred over 10 m, scaled ×1.5 and clamped. These drive
 the ground colour, the raised forest floor and the understory.
+
+**Far forests**: three things keep distant hills from looking bare.
+
+- *Canopy colour in the ground* (Far Cry's forest mask feeding the terrain colour): each
+  analysis cell keeps the average crown colour of its trees (`canopy_col`, from
+  `crown_color()`), stored with the canopy cover in the ground mesh's CUSTOM0. The
+  ground shader (`toon_ground`) blends it in from 500 to 1600 m with a clumpy crown
+  pattern, so a forest still reads as a forest where its trees are no longer drawn.
+  Both distances belong to the `trees` LOD category.
+- *Woods on the far hills*: outside the basin, `skirt_woods()` puts forest patches on
+  the lower, gentler mountain slopes (below ~600 m, conifers above ~300 m), in the
+  skirt's canopy colour and as shadowless blob trees out to 4.5 km (`_far_woods()`,
+  ~33k).
+- Blob trees in the basin are drawn to 3.2 km (was 2.2).
 
 **Tree models** (`common/tree_gen.gd`, `shaders/foliage.gdshader`):
 
@@ -413,6 +441,21 @@ trunks, and clear of other understory by its own radius.
 | Boulders | 16 m | 0.04 + 0.3 × alpine + 0.12 × heath | 1.5 m | Tilted 60 % to the slope |
 | Ledge plants | per ledge | 35 % | none | Small bushes on the cliff skin |
 
+### With the MegaKit
+
+When `assets/megakit` is there, the understory also uses its models (drawn in our toon
+style, see the README):
+
+- **bushes**: about half are its red and flowering bushes, simplified beyond 60 m;
+- **ferns**: its fern, a little fewer and only lightly tinted;
+- **broad-leaf plants** (new layer, category `plants`): on wet ground and moist forest
+  edges;
+- **mushrooms** (new layer): in old, moist forest, drawn to 120 m;
+- **rocks**: mossy rocks, scree rubble (its pebbles, tinted with the scree colour) and
+  boulders all use its rocks, scaled to 60 %.
+
+Chosen by eye: its yellow and pink flowers, clover and grass are left out.
+
 ## 10. Ground cover (`RiverScenery`)
 
 - **Reeds** at the shore (0.7 m under to 0.9 m above the nearest water, within 15 m of
@@ -423,7 +466,8 @@ trunks, and clear of other understory by its own radius.
   water. Every blade tips the same way (a lean built into the mesh), and the clump is
   turned to lean **towards the water** within 25 m of it and **with the wind map**
   elsewhere.
-- **Wildflowers** with the grass: 6 % × meadow; white, yellow, purple.
+- **Wildflowers** with the grass: 6 % × meadow; white, yellow, purple (with the MegaKit:
+  its purple flowers instead).
 
 ## 11. Built things
 
@@ -518,12 +562,11 @@ and prints the steepest 2 m step was used. It isn't kept in the repo.
 - The rider's camera can pass close to a tree trunk on a bend.
 - Some seeds may still give an odd road (a long detour, a crossing over itself). Check
   the map.
-- About 62k trees (each with a root mound), 280k understory props, 140k ferns and 550k
-  grass clumps (seed 7, 7.4 km road). At 1080p on the dev box (RX 7900 XT), quality
-  high, auto off: 270 fps average, 186 fps 1 % low. With `--auto-lod=on --target-fps=60`
-  the manager spends the headroom on longer draw distances (~220 fps). Expected on the
-  ride PC (RTX 3060 Ti): about 90 fps at high; the manager holds 60 either way. Not
-  measured there yet.
+- About 80k trees (25k of them pines, many on the heath), 33k far-wood blobs, 340k
+  understory props and 550k grass clumps (seed 7, 7.4 km road). At 1080p on the dev
+  box (RX 7900 XT), quality high, auto off: 185-198 fps average, 111-122 fps 1 % low.
+  Expected on the ride PC (RTX 3060 Ti): about 65 fps at high; the detail manager holds
+  60 by trimming the least important props first. Not measured there yet.
 - The basin has many rivers, so the loop crosses water ~15 times, mostly small streams.
 
 ## References

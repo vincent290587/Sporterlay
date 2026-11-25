@@ -48,6 +48,10 @@ func build(parent: Node3D, seed: int) -> void:
 			spans.append("%d m" % int(m * route.spacing))
 	print("  bridges at: ", ", ".join(spans))
 	RiverScenery.build(parent, land, route, bridges, cliffs, seed)
+	# the land and the cliff tool point at each other: break the loop once built, or
+	# neither is ever freed (a leak on every world switch, reported at exit)
+	land.strata = null
+	cliffs.land = null
 
 
 ## Route points over water, widened a little for the abutments.

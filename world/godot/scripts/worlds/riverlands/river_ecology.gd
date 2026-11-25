@@ -25,8 +25,8 @@ const TREE_CHUNK := 100.0          # trees pick their own tier, so chunks only n
 const TREE_NEAR := 250.0            # full TreeGen models out to here
 const TREE_MID := 600.0             # lighter TreeGen models (no shadows) out to here
 const TREE_FAR := 1300.0            # far TreeGen crowns (no leaf cards) out to here, blobs beyond
-const TREE_VISIBLE := 2200.0
-const SMALL_CHUNK := 64.0
+const TREE_VISIBLE := 3200.0
+const SMALL_CHUNK := 100.0           # bigger chunks: many prop models, fewer draw calls
 const SMALL_VISIBLE := 350.0
 const FERN_VISIBLE := 200.0
 const MOUND_VISIBLE := 250.0
@@ -47,7 +47,9 @@ const BIRCH := [Color(0.62, 0.50, 0.10), Color(1.0, 0.86, 0.36)]
 const BUSH_TINTS := [Color(0.40, 0.58, 0.24), Color(0.80, 0.44, 0.20), Color(0.70, 0.26, 0.18), Color(0.82, 0.68, 0.28)]
 const FERN_TINTS := [Color(0.82, 0.62, 0.22), Color(0.72, 0.38, 0.16), Color(0.46, 0.62, 0.26)]
 
-enum { BROAD, PINE, SPRUCE, BIRCH_TREE, DEAD }
+enum { BROAD, PINE, SPRUCE, BIRCH_TREE, DEAD, TWISTED }
+const TWISTED_RADIUS := 1.25        # twisted trees spread wide: more room than others
+var growing := [BROAD, PINE, SPRUCE, BIRCH_TREE]   # species competing for ground (+ TWISTED with the MegaKit)
 
 
 ## Footprints of what's been placed: (x, z, radius among equals, radius against lower priority).
@@ -122,16 +124,24 @@ func _exclusions() -> void:
 func _viabilities(seed: int) -> void:
 	var na := RiverLand.NA
 	var noises := []
-	for k in 4:
+	for k in 4:   # one noise per original species (seeds kept so their patterns don't change)
 		var nz := FastNoiseLite.new()
 		nz.seed = seed + 200 + k
 		nz.frequency = 0.006
 		nz.fractal_octaves = 3
 		noises.append(nz)
-	for k in 4:
+	if MegaKit.available() and not growing.has(TWISTED):
+		growing.append(TWISTED)
+	for k in TWISTED + 1:
 		var v := PackedFloat32Array()
-		v.resize(na * na)
+		v.resize(na * na if growing.has(k) else 0)
 		viability.append(v)
+	var vt: PackedFloat32Array = viability[TWISTED]
+	var twisted := growing.has(TWISTED)
+	var tn := FastNoiseLite.new()
+	tn.seed = seed + 204
+	tn.frequency = 0.006
+	tn.fractal_octaves = 3
 	var vb: PackedFloat32Array = viability[BROAD]
 	var vp: PackedFloat32Array = viability[PINE]
 	var vs: PackedFloat32Array = viability[SPRUCE]
@@ -162,11 +172,26 @@ func _viabilities(seed: int) -> void:
 			vs[c] = forest * (ramp(h, 60.0, 180.0) + 1.2 * (0.5 - sun) + 0.3 * occl) \
 				* (0.75 + 0.5 * (noises[1] as FastNoiseLite).get_noise_2d(x + nx, z + nz)) * e
 			# pine: drier, sunnier, convex ground
-			vp[c] = forest * (0.5 * ramp(h, 20.0, 120.0) + 0.6 * ramp(sun, 0.5, 0.8) + 0.5 * ridge) \
+			vp[c] = (forest * (0.5 * ramp(h, 20.0, 120.0) + 0.6 * ramp(sun, 0.5, 0.8) + 0.5 * ridge) \
+				+ land.heath[c] * 0.33 * (1.0 - ramp(land.slope[c], 0.08, 0.16))) \
 				* (0.75 + 0.5 * (noises[2] as FastNoiseLite).get_noise_2d(x + nx, z + nz)) * e
+			# (the heath term: an open pine woodland on dry, sunny ground, so heath isn't
+			# bare; only where it's gentle enough to stand on, under ~30°)
+			# trees other than the twisted ones keep off steep ground (32-38°)
+			var upright := 1.0 - ramp(land.slope[c], 0.15, 0.21)
+			vb[c] *= upright
+			vp[c] *= upright
+			vs[c] *= upright
+			vbi[c] *= upright
 			# birch: near water, thin woods
 			vbi[c] = (forest * 0.5 + 0.25) * (1.2 * wet + 0.3 * (1.0 - forest)) \
 				* (0.75 + 0.5 * (noises[3] as FastNoiseLite).get_noise_2d(x + nx, z + nz)) * e
+			# twisted (MegaKit): rugged ground, steep slopes just short of cliffs, ridges,
+			# away from water, not too high
+			if twisted:
+				vt[c] = (0.25 + 0.5 * forest) * (0.3 + 0.9 * ramp(land.slope[c], 0.08, 0.2) + 0.6 * ridge) \
+					* (1.0 - ramp(h, 220.0, 320.0)) * (1.0 - 0.7 * wet) \
+					* (0.75 + 0.5 * tn.get_noise_2d(x + nx, z + nz)) * e
 
 
 ## Signed distance into the forest (m): positive inside, negative outside.
@@ -177,8 +202,8 @@ func _age() -> void:
 	inside.resize(n)
 	for c in n:
 		var best := 0.0
-		for v: PackedFloat32Array in viability:
-			best = maxf(best, v[c])
+		for k: int in growing:
+			best = maxf(best, (viability[k] as PackedFloat32Array)[c])
 		inside[c] = 1 if best > FOREST_EDGE else 0
 	var d_in := _distance(inside, 0)    # inside cells: distance to the nearest outside cell
 	var d_out := _distance(inside, 1)
@@ -237,14 +262,14 @@ func place_trees(seed: int) -> void:
 			var c := land.cell(px, pz)
 			var best := -1
 			var bv := 0.0
-			for k in 4:
+			for k: int in growing:
 				var v: float = (viability[k] as PackedFloat32Array)[c]
 				if v > bv:
 					bv = v
 					best = k
 			# the odd lone tree out in the meadow
 			if bv < FOREST_EDGE:
-				if exclude[c] < 0.5 or rng.randf() > 0.004:
+				if exclude[c] < 0.5 or land.slope[c] > 0.15 or rng.randf() > 0.004:
 					continue
 				best = BIRCH_TREE if rng.randf() < 0.5 else BROAD
 				bv = FOREST_EDGE
@@ -280,7 +305,7 @@ func place_trees(seed: int) -> void:
 			size_t = rng.randf() * 0.3     # young regrowth inside the forest
 		var idx := clampi(int(size_t * SIZES.size()), 0, SIZES.size() - 1)
 		var scale: float = SIZES[idx] * rng.randf_range(0.9, 1.1)   # bridges the size steps
-		var r := TREE_RADIUS * scale
+		var r := TREE_RADIUS * scale * (TWISTED_RADIUS if int(cand.z) == TWISTED else 1.0)
 		if not trees.free_at(cand.x, cand.y, false):
 			continue
 		trees.add(cand.x, cand.y, r, TREE_PRIORITY_RADIUS * scale)
@@ -288,7 +313,17 @@ func place_trees(seed: int) -> void:
 		if a > AGE_DEPTH * 0.85 and rng.randf() < 0.04:
 			species = DEAD
 		placed.append([cand.x, cand.y, species, scale, hue.get_noise_2d(cand.x, cand.y)])
-	print("  trees chosen: %d in %d ms" % [placed.size(), Time.get_ticks_msec() - t])
+	var per := {}
+	var steep := {}   # trees on ground steeper than ~33° (slope > 0.16)
+	for p: Array in placed:
+		per[int(p[2])] = per.get(int(p[2]), 0) + 1
+		if land.field(land.slope, p[0], p[1]) > 0.16:
+			steep[int(p[2])] = steep.get(int(p[2]), 0) + 1
+	var names := {BROAD: "broadleaf", PINE: "pine", SPRUCE: "spruce", BIRCH_TREE: "birch", DEAD: "dead", TWISTED: "twisted"}
+	var parts := []
+	for k in per:
+		parts.append("%s %d (%d steep)" % [names[k], per[k], steep.get(k, 0)])
+	print("  trees chosen: %d in %d ms (%s)" % [placed.size(), Time.get_ticks_msec() - t, ", ".join(parts)])
 	_canopy()
 	land.deform_under_trees()
 
@@ -300,6 +335,11 @@ func _canopy() -> void:
 	cb.resize(na * na)
 	var cc := PackedFloat32Array()
 	cc.resize(na * na)
+	var sr := PackedFloat32Array()   # crown colour sums, for the far canopy colour
+	sr.resize(na * na)
+	var sg := sr.duplicate()
+	var sbl := sr.duplicate()
+	var sw := sr.duplicate()
 	for p: Array in placed:
 		var c := land.cell(p[0], p[1])
 		var crown: float = p[3] * 0.6 * 100.0 / (RiverLand.A_STEP * RiverLand.A_STEP)
@@ -307,11 +347,36 @@ func _canopy() -> void:
 			cc[c] += crown
 		elif p[2] != DEAD:
 			cb[c] += crown
+		if p[2] != DEAD:
+			var col := crown_color(int(p[2]), float(p[4]))
+			sr[c] += col.r * crown
+			sg[c] += col.g * crown
+			sbl[c] += col.b * crown
+			sw[c] += crown
 	cb = land.blur_m(cb, 10.0)
 	cc = land.blur_m(cc, 10.0)
+	sr = land.blur_m(sr, 20.0)
+	sg = land.blur_m(sg, 20.0)
+	sbl = land.blur_m(sbl, 20.0)
+	sw = land.blur_m(sw, 20.0)
 	for c in na * na:
 		land.canopy_broad[c] = clampf(cb[c] * 1.5, 0.0, 1.0)
 		land.canopy_conifer[c] = clampf(cc[c] * 1.5, 0.0, 1.0)
+		if sw[c] > 0.0001:
+			land.canopy_col[c] = Color(sr[c] / sw[c], sg[c] / sw[c], sbl[c] / sw[c])
+
+
+## A crown's colour seen from afar (sRGB), by species and broadleaf hue.
+static func crown_color(species: int, hue: float) -> Color:
+	match species:
+		PINE, SPRUCE:
+			return Meshes.NEEDLE_DARK.lerp(Meshes.NEEDLE_LIGHT, 0.45)
+		BIRCH_TREE:
+			return BIRCH[0].lerp(BIRCH[1], 0.55)
+		TWISTED:
+			return RED[0].lerp(RED[1], 0.5)
+	var pal: Array = [GREEN, YELLOW, ORANGE, RED][clampi(int((hue * 0.5 + 0.5) * 4.0), 0, 3)]
+	return (pal[0] as Color).lerp(pal[1], 0.55)
 
 
 ## Trees as TreeGen models, three variants of each species and colour, with the old
@@ -348,7 +413,13 @@ func build_trees(parent: Node3D, mat: Material) -> void:
 				sy = s * rng.randf_range(0.95, 1.15)
 			DEAD:
 				kind = "dead"
-		var key := "%s:%d" % [kind, rng.randi() % VARIANTS]
+			TWISTED:
+				kind = "twisted"
+				sy = s * rng.randf_range(0.9, 1.1)
+		var variants := VARIANTS
+		if MegaKit.available() and (kind == "twisted" or kind == "dead"):
+			variants = 5   # the MegaKit has five of each
+		var key := "%s:%d" % [kind, rng.randi() % variants]
 		if not sets.has(key):
 			sets[key] = Instancer.new(TREE_CHUNK)
 		(sets[key] as Instancer).put(pos, yaw, s, sy, tint)
@@ -375,14 +446,26 @@ func build_trees(parent: Node3D, mat: Material) -> void:
 			models = TreeGen.lods(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
 				return TreeGen.spruce(r, 16.0, 2.9, 9, Meshes.NEEDLE_DARK.darkened(0.1), Meshes.NEEDLE_LIGHT, lod))
 			far = Meshes.conifer_far(16.0, 2.7)
+		elif kind == "twisted":
+			var name := "TwistedTree_%d" % (int(key.get_slice(":", 1)) + 1)
+			models = [MegaKit.mesh(name, MegaKit.TREE, 0), MegaKit.mesh(name, MegaKit.TREE, 1), MegaKit.mesh(name, MegaKit.TREE, 2)]
+			far = Meshes.broadleaf_far(rng, RED[0], RED[1])
+		elif MegaKit.available():
+			var name := "DeadTree_%d" % (int(key.get_slice(":", 1)) + 1)
+			var d0 := MegaKit.mesh(name, MegaKit.SOLID, 0)
+			var d1 := MegaKit.mesh(name, MegaKit.SOLID, 1)
+			n += inst.build_tiers(parent, [[d0, null, 0.0, TREE_NEAR, true, MegaKit.materials_of(d0), 100.0],
+				[d1, null, TREE_NEAR, TREE_MID, false, MegaKit.materials_of(d1), 150.0]], "trees")
+			continue
 		else:
 			n += inst.build_tiers(parent, [[TreeGen.dead(rng), null, 0.0, TREE_MID, true, TreeGen.materials(4), 150.0]], "trees")
 			continue
 		var blob: ShaderMaterial = TreeGen.materials(3)[0]
+		var mk := kind == "twisted"
 		n += inst.build_tiers(parent, [
-			[models[0], null, 0.0, TREE_NEAR, true, TreeGen.materials(0), 100.0],
-			[models[1], null, TREE_NEAR, TREE_MID, false, TreeGen.materials(1), 150.0],
-			[models[2], null, TREE_MID, TREE_FAR, false, TreeGen.materials(2), 300.0],
+			[models[0], null, 0.0, TREE_NEAR, true, MegaKit.materials_of(models[0]) if mk else TreeGen.materials(0), 100.0],
+			[models[1], null, TREE_NEAR, TREE_MID, false, MegaKit.materials_of(models[1]) if mk else TreeGen.materials(1), 150.0],
+			[models[2], null, TREE_MID, TREE_FAR, false, MegaKit.materials_of(models[2]) if mk else TreeGen.materials(2), 300.0],
 			[far, blob, TREE_FAR, TREE_VISIBLE, false, [blob], 500.0]], "trees")
 	var nm := mounds.build(parent, Meshes.mound(), mat, MOUND_VISIBLE, false, 0.0, "mounds")
 	print("  trees: %d (%d models), root mounds: %d" % [n, sets.size(), nm])
@@ -429,37 +512,59 @@ func _layer(spacing: float, radius: float, chance: Callable, put: Callable) -> v
 
 func build_understory(parent: Node3D, mat: Material, grass_mat: Material, ledges: PackedVector3Array) -> void:
 	var t := Time.get_ticks_msec()
-	var bushes := Instancer.new(SMALL_CHUNK)
-	var ferns := Instancer.new(SMALL_CHUNK)
-	var rocks := Instancer.new(SMALL_CHUNK)
-	var crumbled := Instancer.new(SMALL_CHUNK)
+	var mk := MegaKit.available()
+	var own_bush := MegaKit.Mix.new(SMALL_CHUNK, [[Meshes.bush(rng), mat]])
+	var mk_bush := MegaKit.mix(SMALL_CHUNK, ["Bush_Common", "Bush_Common_Flowers"], MegaKit.TREE) if mk else own_bush
+	var ferns := MegaKit.mix(SMALL_CHUNK, ["Fern_1"], MegaKit.PLANT) if mk else MegaKit.Mix.new(SMALL_CHUNK, [[Meshes.fern(rng), grass_mat]])
+	var plants := MegaKit.mix(SMALL_CHUNK, ["Plant_1", "Plant_1_Big"], MegaKit.PLANT) if mk else null
+	var mushrooms := MegaKit.mix(SMALL_CHUNK, ["Mushroom_Common", "Mushroom_Laetiporus"], MegaKit.SOLID) if mk else null
+	var own_rock := MegaKit.Mix.new(SMALL_CHUNK, [[Meshes.rock(rng), mat]])
+	var rocks := MegaKit.mix(SMALL_CHUNK, ["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"], MegaKit.SOLID) if mk else own_rock
+	var crumbled := MegaKit.mix(SMALL_CHUNK, ["Pebble_Round_1", "Pebble_Round_3", "Pebble_Square_2", "Pebble_Square_5", "Rock_Medium_2"], MegaKit.SOLID) if mk \
+		else MegaKit.Mix.new(SMALL_CHUNK, [[Meshes.rock(rng), mat]])
+	var boulders := MegaKit.mix(TREE_CHUNK, ["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"], MegaKit.SOLID) if mk \
+		else MegaKit.Mix.new(TREE_CHUNK, [[Meshes.rock(rng), mat]])
 	var logs := Instancer.new(SMALL_CHUNK)
 	var stumps := Instancer.new(SMALL_CHUNK)
-	var boulders := Instancer.new(TREE_CHUNK)
+	var rock_s := 0.6 if mk else 1.0   # MegaKit rocks are ~2 m across, ours ~1 m
 
-	# bushes: thickest along the forest edge (age around 0), and by water
+	# bushes: thickest along the forest edge (age around 0), and by water; a mix of
+	# the MegaKit's red and flowering bushes and our own blobs in autumn tints
 	_layer(3.0, 1.1, func(c: int) -> float:
 		return (band(age[c], -14.0, -4.0, 6.0, 16.0) * 0.6 + land.wet[c] * 0.3 + land.heath[c] * 0.08) * exclude[c],
 		func(px: float, pz: float, _c: int) -> void:
-			var tint: Color = BUSH_TINTS[0] if rng.randf() < 0.45 else BUSH_TINTS[rng.randi() % BUSH_TINTS.size()]
 			var s := rng.randf_range(0.6, 1.3)
-			bushes.put(Vector3(px, land.height_at(px, pz), pz), rng.randf() * TAU, s, s * rng.randf_range(0.8, 1.2), tint.darkened(rng.randf() * 0.15)))
-	# ferns: in the shade of the canopy where it's moist
+			var pos := Vector3(px, land.height_at(px, pz), pz)
+			if mk and rng.randf() < 0.55:
+				mk_bush.pick(rng).put(pos, rng.randf() * TAU, s, s * rng.randf_range(0.8, 1.2), Color(1, 1, 1).darkened(rng.randf() * 0.15))
+			else:
+				var tint: Color = BUSH_TINTS[0] if rng.randf() < 0.45 else BUSH_TINTS[rng.randi() % BUSH_TINTS.size()]
+				own_bush.sets[0].put(pos, rng.randf() * TAU, s, s * rng.randf_range(0.8, 1.2), tint.darkened(rng.randf() * 0.15)))
+	# ferns: in the shade of the canopy where it's moist (the MegaKit's are fuller: fewer)
 	_layer(2.2, 0.7, func(c: int) -> float:
 		var shade := clampf(land.canopy_broad[c] + land.canopy_conifer[c], 0.0, 1.0)
-		return shade * (0.3 + land.moist[c]) * (0.6 + land.occl[c]) * 0.55 * exclude[c],
+		return shade * (0.3 + land.moist[c]) * (0.6 + land.occl[c]) * (0.35 if mk else 0.55) * exclude[c],
 		func(px: float, pz: float, _c: int) -> void:
 			var tint: Color = FERN_TINTS[rng.randi() % FERN_TINTS.size()]
+			if mk:
+				tint = Color.WHITE.lerp(tint, 0.45)   # their fern is green: an autumn hint only
 			var s := rng.randf_range(0.8, 1.4)
-			ferns.put(Vector3(px, land.height_at(px, pz) - 0.05, pz), rng.randf() * TAU, s, s, tint.darkened(rng.randf() * 0.1)))
+			ferns.pick(rng).put(Vector3(px, land.height_at(px, pz) - 0.05, pz), rng.randf() * TAU, s, s, tint.darkened(rng.randf() * 0.1)))
+	# broad-leaf plants on moist ground and along forest edges (MegaKit)
+	if mk:
+		_layer(3.0, 0.8, func(c: int) -> float:
+			return (land.wet[c] * 0.35 + band(age[c], -10.0, -2.0, 8.0, 18.0) * land.moist[c] * 0.3) * exclude[c],
+			func(px: float, pz: float, _c: int) -> void:
+				var s := rng.randf_range(0.7, 1.3)
+				plants.pick(rng).put(Vector3(px, land.height_at(px, pz) - 0.05, pz), rng.randf() * TAU, s, s, Color(1, 1, 1).darkened(rng.randf() * 0.15)))
 	# mossy rocks around the conifers (their canopy map is this layer's viability)
 	_layer(6.0, 1.2, func(c: int) -> float:
 		return land.canopy_conifer[c] * 0.35 * exclude[c],
 		func(px: float, pz: float, _c: int) -> void:
-			var s := rng.randf_range(0.5, 1.4)
-			rocks.put_basis(Vector3(px, land.height_at(px, pz) - s * 0.15, pz), _slope_basis(px, pz, rng.randf() * TAU, s, s * 0.7, 0.8),
+			var s := rng.randf_range(0.5, 1.4) * rock_s
+			rocks.pick(rng).put_basis(Vector3(px, land.height_at(px, pz) - s * 0.15, pz), _slope_basis(px, pz, rng.randf() * TAU, s, s * 0.7, 0.8),
 				Color(0.80, 0.92, 0.72).darkened(rng.randf() * 0.2)))
-	# logs and stumps in old forest, logs lying along the slope
+	# logs and stumps in old forest, logs lying along the slope; mushrooms in the damp
 	_layer(12.0, 1.8, func(c: int) -> float:
 		return smoothstep(10.0, AGE_DEPTH, age[c]) * 0.4 * exclude[c],
 		func(px: float, pz: float, _c: int) -> void:
@@ -469,36 +574,50 @@ func build_understory(parent: Node3D, mat: Material, grass_mat: Material, ledges
 				logs.put_basis(Vector3(px, y, pz), _slope_basis(px, pz, rng.randf() * TAU, s, 1.0, 1.0), Color.WHITE)
 			else:
 				stumps.put(Vector3(px, y, pz), rng.randf() * TAU, rng.randf_range(0.8, 1.3), rng.randf_range(0.7, 1.4), Color.WHITE))
+	if mk:
+		_layer(4.0, 0.5, func(c: int) -> float:
+			return smoothstep(8.0, AGE_DEPTH, age[c]) * land.moist[c] * 0.25 * exclude[c],
+			func(px: float, pz: float, _c: int) -> void:
+				var s := rng.randf_range(0.8, 1.5)
+				mushrooms.pick(rng).put(Vector3(px, land.height_at(px, pz) - 0.03, pz), rng.randf() * TAU, s, s, Color.WHITE))
 	# crumbled rock on the scree, in the colour of the cliff it fell from
 	_layer(3.0, 0.6, func(c: int) -> float:
 		return land.scree[c] * 0.55,
 		func(px: float, pz: float, c: int) -> void:
-			var s := rng.randf_range(0.3, 1.2)
+			var s := rng.randf_range(0.3, 1.2) * rock_s
 			var col: Color = land.scree_col[c]
 			var tint := Color(col.r / 0.6, col.g / 0.6, col.b / 0.6).darkened(rng.randf() * 0.15)
-			crumbled.put_basis(Vector3(px, land.height_at(px, pz) - s * 0.1, pz), _slope_basis(px, pz, rng.randf() * TAU, s, s * 0.7, 0.9), tint))
+			crumbled.pick(rng).put_basis(Vector3(px, land.height_at(px, pz) - s * 0.1, pz), _slope_basis(px, pz, rng.randf() * TAU, s, s * 0.7, 0.9), tint))
 	# boulders on open, high and dry ground
 	_layer(16.0, 1.5, func(c: int) -> float:
 		return (0.04 + land.alpine[c] * 0.3 + land.heath[c] * 0.12) * smoothstep(4.0, 9.0, land.dw[c]),
 		func(px: float, pz: float, _c: int) -> void:
-			var s := rng.randf_range(0.8, 3.5)
-			boulders.put_basis(Vector3(px, land.height_at(px, pz) - s * 0.15, pz), _slope_basis(px, pz, rng.randf() * TAU, s, s * rng.randf_range(0.6, 1.0), 0.6),
+			var s := rng.randf_range(0.8, 3.5) * rock_s
+			boulders.pick(rng).put_basis(Vector3(px, land.height_at(px, pz) - s * 0.15, pz), _slope_basis(px, pz, rng.randf() * TAU, s, s * rng.randf_range(0.6, 1.0), 0.6),
 				Color(1, 1, 1).darkened(rng.randf() * 0.2)))
 	# plants on the cliff ledges
 	var ledge_plants := 0
 	for p in ledges:
 		if rng.randf() > 0.35:
 			continue
-		var tint: Color = BUSH_TINTS[rng.randi() % BUSH_TINTS.size()]
 		var s := rng.randf_range(0.4, 0.8)
-		bushes.put(p - Vector3(0.0, 0.1, 0.0), rng.randf() * TAU, s, s, tint)
+		if mk and rng.randf() < 0.5:
+			mk_bush.pick(rng).put(p - Vector3(0.0, 0.1, 0.0), rng.randf() * TAU, s, s, Color.WHITE)
+		else:
+			own_bush.sets[0].put(p - Vector3(0.0, 0.1, 0.0), rng.randf() * TAU, s, s, BUSH_TINTS[rng.randi() % BUSH_TINTS.size()])
 		ledge_plants += 1
 
-	var n := bushes.build(parent, Meshes.bush(rng), mat, SMALL_VISIBLE, true, 0.0, "bushes")
-	n += rocks.build(parent, Meshes.rock(rng), mat, SMALL_VISIBLE, true, 0.0, "props")
-	n += crumbled.build(parent, Meshes.rock(rng), mat, SMALL_VISIBLE, true, 0.0, "props")
+	var n := own_bush.build(parent, SMALL_VISIBLE, true, "bushes")
+	if mk:
+		# their bushes are ~10x our triangles: simplified beyond 60 m
+		n += mk_bush.build_lod(parent, [MegaKit.mesh("Bush_Common", MegaKit.TREE, MegaKit.PROP_FAR),
+			MegaKit.mesh("Bush_Common_Flowers", MegaKit.TREE, MegaKit.PROP_FAR)], 60.0, SMALL_VISIBLE, true, "bushes")
+		n += plants.build(parent, FERN_VISIBLE, false, "plants")
+		n += mushrooms.build(parent, 120.0, false, "props")
+	n += rocks.build(parent, SMALL_VISIBLE, true, "props")
+	n += crumbled.build(parent, SMALL_VISIBLE, true, "props")
 	n += logs.build(parent, Meshes.fallen_log(rng), mat, SMALL_VISIBLE, true, 0.0, "props")
 	n += stumps.build(parent, Meshes.stump(rng), mat, SMALL_VISIBLE, true, 0.0, "props")
-	n += boulders.build(parent, Meshes.rock(rng), mat, TREE_VISIBLE, true, 0.0, "boulders")
-	var nf := ferns.build(parent, Meshes.fern(rng), grass_mat, FERN_VISIBLE, false, 0.0, "ferns")
+	n += boulders.build(parent, TREE_VISIBLE, true, "boulders")
+	var nf := ferns.build(parent, FERN_VISIBLE, false, "ferns")
 	print("  understory: %d props, %d ferns, %d on ledges, in %d ms" % [n, nf, ledge_plants, Time.get_ticks_msec() - t])

@@ -8,6 +8,7 @@ var normals := PackedVector3Array()
 var colors := PackedColorArray()
 var uvs := PackedVector2Array()
 var indices := PackedInt32Array()
+var custom := PackedFloat32Array()   # optional CUSTOM0 (RGBA float), 4 per vertex
 
 
 func add(p: Vector3, n: Vector3, c: Color, uv := Vector2.ZERO) -> int:
@@ -65,6 +66,10 @@ func commit() -> ArrayMesh:
 	arrays[Mesh.ARRAY_COLOR] = colors
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_INDEX] = indices
+	var flags := 0
+	if custom.size() == verts.size() * 4:
+		arrays[Mesh.ARRAY_CUSTOM0] = custom
+		flags = Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
 	return mesh

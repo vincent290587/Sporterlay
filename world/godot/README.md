@@ -70,7 +70,7 @@ Keys: **Esc** quit, **H** hide the status line, **F3** frame rate, **F4** detail
 
 Options (after `--` when launching the editor binary, directly on an exported exe):
 `--port=47810` (must match Sporterlay's `world_port`), `--world=riverlands`,
-`--seed=7` (another variant), `--map=out.png`, `--bench=60` (ride 60 s with vsync off and print the frame rate and memory use), `--size=1920x1080` (window size), `--cam=x,y,z,tx,ty,tz` (fixed camera), `--quality=high`, `--target-fps=60`, `--auto-lod=on`,
+`--seed=7` (another variant), `--map=out.png`, `--bench=60` (ride 60 s with vsync off; prints the frame rate, memory use, GPU and CPU, and saves them to `bench.txt` in the user data folder: `%APPDATA%\Godot\app_userdata\Sporterlay World` on Windows, `~/.local/share/godot/app_userdata/Sporterlay World` on Linux), `--size=1920x1080` (window size), `--cam=x,y,z,tx,ty,tz` (fixed camera), `--quality=high`, `--target-fps=60`, `--auto-lod=on`,
 `--fade=on` (see [docs/level-of-detail.md](docs/level-of-detail.md)),
 `--power=200`, `--at=1200` (start that far along the road),
 `--shot=out.png --frames=90` (save a screenshot and quit; used for checks).
@@ -85,12 +85,27 @@ the export templates the first time). It writes `build/SporterlayWorld.exe` with
 game embedded. Icon/version editing (`application/modify_resources`) is off, so rcedit
 isn't needed.
 
+## Third-party models (experiment)
+
+`assets/megakit/` holds 33 models from Quaternius' [Stylized Nature
+MegaKit](https://quaternius.com/packs/stylizednaturemegakit.html) (CC0, see its
+`LICENSE.txt`): twisted and dead trees, bushes, ferns, plants, purple flowers, mushrooms,
+rocks and pebbles. `tools/import_megakit.py <unzipped pack>` makes that
+folder from the free Standard pack: it picks the models, removes normal maps and shrinks
+textures (11 MB). Without the folder the worlds fall back to our own models. `MegaKit` (`scripts/common/megakit.gd`) turns a model into a mesh drawn
+with our `toon_tex` shader (texture × tint, toon light, cut-outs, sway, LOD dissolve),
+with normals reworked like our own trees (crown-centred leaves, upward-bent plants) and
+their baked vertex darkening dropped.
+
+`--world=gallery --megakit=toon` shows them in our style, `--megakit=shipped` as they
+come.
+
 ## Layout
 
 | Path | What |
 |---|---|
 | `scripts/main.gd` | Picks and builds a world, status line, options, keys |
-| `scripts/common/` | Shared: `PowerLink` (UDP), `Rider` (physics, camera), `Route` (road from a rough loop, grade cap), `Roads` (road surface), `Look` (sky, fog, sun), `Lod` (level-of-detail manager), `Instancer` (chunked instances, LOD tiers), `TreeGen` (branching trees, conifers), `MeshBuilder`, `Meshes` (props), `MinHeap` |
+| `scripts/common/` | Shared: `MegaKit` (imported models in our style), `PowerLink` (UDP), `Rider` (physics, camera), `Route` (road from a rough loop, grade cap), `Roads` (road surface), `Look` (sky, fog, sun), `Lod` (level-of-detail manager), `Instancer` (chunked instances, LOD tiers), `TreeGen` (branching trees, conifers), `MeshBuilder`, `Meshes` (props), `MinHeap` |
 | `scripts/worlds/gallery/` | `GalleryWorld`: all tree models side by side |
 | `scripts/worlds/valley/` | `ValleyWorld`, `ValleyTerrain`, `ValleyScenery` |
 | `scripts/worlds/riverlands/` | `RiverWorld`, `RiverLand` (terrain, water, maps, biomes), `RiverRoad` (A*), `RiverCliffs` (strata skin, scree, ledges), `RiverEcology` (species, competition, age, understory), `RiverScenery` (order, ground cover, bridges, fences) |

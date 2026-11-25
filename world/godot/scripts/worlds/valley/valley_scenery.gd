@@ -58,6 +58,7 @@ static func _water(parent: Node3D) -> void:
 ## Grass along the road, densest at its edges.
 static func _grass(parent: Node3D, terrain: ValleyTerrain, route: Route, rng: RandomNumberGenerator) -> void:
 	var grass := Instancer.new(GRASS_CHUNK)
+	var flowers: MegaKit.Mix = MegaKit.mix(GRASS_CHUNK, RiverScenery.FLOWERS, MegaKit.PLANT) if MegaKit.available() else null
 	var hw := Route.HALF_WIDTH
 	for m in route.count():
 		var p := route.points[m]
@@ -77,11 +78,16 @@ static func _grass(parent: Node3D, terrain: ValleyTerrain, route: Route, rng: Ra
 				continue
 			pos.y = h
 			var col := terrain.color_at(pos.x, pos.z, h, ny, 1e9)
-			grass.put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.3), rng.randf_range(0.6, 1.1), col)
+			if flowers != null and rng.randf() < 0.012:
+				flowers.pick(rng).put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.2), rng.randf_range(0.8, 1.2), Color.WHITE)
+			else:
+				grass.put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.3), rng.randf_range(0.6, 1.1), col)
 	var mat := ShaderMaterial.new()
 	mat.shader = GRASS
 	var mesh := Meshes.grass_clump(rng)
 	print("grass clumps: ", grass.build(parent, mesh, mat, GRASS_VISIBLE, false, 0.0, "grass"))
+	if flowers != null:
+		print("flowers: ", flowers.build(parent, GRASS_VISIBLE, false, "grass"))
 	Lod.add_param("grass", mat, "fade_start", 130.0)
 	Lod.add_param("grass", mat, "fade_end", 190.0)
 
@@ -136,6 +142,7 @@ static func _trees(parent: Node3D, terrain: ValleyTerrain, rng: RandomNumberGene
 
 static func _rocks(parent: Node3D, terrain: ValleyTerrain, rng: RandomNumberGenerator, mat: Material) -> void:
 	var rocks := Instancer.new(TREE_CHUNK)
+	var mk_rocks: MegaKit.Mix = MegaKit.mix(TREE_CHUNK, ["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"], MegaKit.SOLID) if MegaKit.available() else null
 	for _k in 2500:
 		var px := rng.randf_range(-ValleyTerrain.HALF, ValleyTerrain.HALF)
 		var pz := rng.randf_range(-ValleyTerrain.HALF, ValleyTerrain.HALF)
@@ -146,6 +153,11 @@ static func _rocks(parent: Node3D, terrain: ValleyTerrain, rng: RandomNumberGene
 			continue
 		var big := rng.randf() < 0.08
 		var s := rng.randf_range(2.5, 7.0) if big else rng.randf_range(0.4, 1.6)
-		rocks.put(Vector3(px, h - s * 0.15, pz), rng.randf() * TAU, s, s * rng.randf_range(0.7, 1.1),
+		if mk_rocks != null:
+			s *= 0.6
+		(mk_rocks.pick(rng) if mk_rocks != null else rocks).put(Vector3(px, h - s * 0.15, pz), rng.randf() * TAU, s, s * rng.randf_range(0.7, 1.1),
 			Color(1, 1, 1).darkened(rng.randf() * 0.2))
-	print("rocks: ", rocks.build(parent, Meshes.rock(rng), mat, TREE_VISIBLE, true, 0.0, "boulders"))
+	var n := rocks.build(parent, Meshes.rock(rng), mat, TREE_VISIBLE, true, 0.0, "boulders")
+	if mk_rocks != null:
+		n += mk_rocks.build(parent, TREE_VISIBLE, true, "boulders")
+	print("rocks: ", n)
