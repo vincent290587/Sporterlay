@@ -28,9 +28,10 @@ static func build(parent: Node3D, land: TransLand, route: Route, seed: int, bloc
 		Lod.category(c[0], c[1])
 	var toon := ShaderMaterial.new()
 	toon.shader = TOON
-	_mesh(parent, land.build_mesh(), toon, true)
+	_mesh(parent, land.build_mesh(), toon, false)   # its low-poly crests make hard-edged bands in moonlight
 	_mesh(parent, Roads.ribbon(route, PackedByteArray(), ROAD), toon, false)
 	_water(parent)
+	_mist(parent)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed + 1
 	_trees(parent, land, rng, blocked)
@@ -57,6 +58,19 @@ static func _water(parent: Node3D) -> void:
 	mi.position.y = TransLand.WATER
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
+
+
+## Mist lying in the hollows, below TransLand.MIST (volumetric: it's drawn out to the
+## environment's volumetric fog length, the height fog carries it further).
+static func _mist(parent: Node3D) -> void:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/mist.gdshader")
+	mat.set_shader_parameter("top", TransLand.MIST)
+	var v := FogVolume.new()
+	v.size = Vector3(TransLand.HALF * 2.0, 160.0, TransLand.HALF * 2.0)
+	v.position = Vector3(0.0, TransLand.MIST - 40.0, 0.0)
+	v.material = mat
+	parent.add_child(v)
 
 
 static func _is_blocked(blocked: Callable, x: float, z: float) -> bool:
@@ -165,8 +179,6 @@ static func _rocks(parent: Node3D, land: TransLand, rng: RandomNumberGenerator, 
 		# more of them on the crag's flanks
 		if Vector2(px, pz).distance_to(castle) > 500.0 and rng.randf() < 0.5:
 			continue
-		if land.road_distance_at(px, pz) < Route.HALF_WIDTH + 1.5 or _is_blocked(blocked, px, pz):
-			continue
 		var h := land.height_at(px, pz)
 		if h < TransLand.WATER - 1.0:
 			continue
@@ -174,6 +186,9 @@ static func _rocks(parent: Node3D, land: TransLand, rng: RandomNumberGenerator, 
 		var s := rng.randf_range(2.5, 7.0) if big else rng.randf_range(0.4, 1.6)
 		if mk != null:
 			s *= 0.6
+		# big rocks keep clear of the road by their own size
+		if land.road_distance_at(px, pz) < Route.HALF_WIDTH + 1.0 + s * (1.4 if mk != null else 0.7) or _is_blocked(blocked, px, pz):
+			continue
 		var tint := Color(0.8, 0.8, 0.88).darkened(rng.randf() * 0.25)
 		(mk.pick(rng) if mk != null else rocks).put(Vector3(px, h - s * 0.15, pz), rng.randf() * TAU, s, s * rng.randf_range(0.7, 1.1), tint)
 	var n := rocks.build(parent, Meshes.rock(rng), mat, TREE_VISIBLE, true, 0.0, "boulders")

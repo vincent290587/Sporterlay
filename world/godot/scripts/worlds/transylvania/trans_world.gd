@@ -35,7 +35,7 @@ func build(parent: Node3D, seed: int) -> void:
 		"sky_horizon": Color(0.07, 0.07, 0.13),
 		"sky_ground": Color(0.03, 0.03, 0.05),
 		"sun_color": Color(0.58, 0.66, 0.92),
-		"sun_pitch": -14.0,
+		"sun_pitch": -21.0,
 		"sun_yaw": moon_yaw,
 		"sun_energy": 0.5,
 		"ambient": Color(0.16, 0.18, 0.32),
@@ -49,6 +49,9 @@ func build(parent: Node3D, seed: int) -> void:
 		"glow_intensity": 0.8,
 		"glow_bloom": 0.05,
 		"shadow_distance": 250.0,
+		# a thin damp haze everywhere (halos round the torches), the mist itself is a
+		# FogVolume over the hollows (TransScenery._mist)
+		"volumetric": {"density": 0.006, "albedo": Color(0.55, 0.6, 0.75), "length": 140.0, "spread": 2.0},
 	})
 	TransScenery.build(parent, land, route, seed, castle.blocks)
 	castle.build(parent)

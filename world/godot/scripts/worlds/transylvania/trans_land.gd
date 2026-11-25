@@ -14,7 +14,7 @@ const RADIUS := 1050.0      # the loop's mean radius (m): ~6.6 km of road
 const CLIMB := 120.0        # the castle plateau above the hills (m)
 const PLATEAU := 75.0       # half its length along the road (m)
 const RAMP := 2600.0        # the climb on each side of it (m along the road)
-const MIST := -4.0          # mist lies below this height
+const MIST := 7.0           # mist lies below this height (the valley road runs at ~0-10 m)
 const WATER := -16.0        # black pools in the deepest hollows
 
 const MOSS := Color(0.24, 0.30, 0.17)
