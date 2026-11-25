@@ -58,6 +58,7 @@ func count() -> int:
 
 
 ## Adds one MultiMeshInstance3D per chunk, visible from `near` to `far` m (0 = no limit).
+## `mat` null keeps the mesh's own materials (multi-surface meshes like TreeGen's).
 func build(parent: Node3D, mesh: Mesh, mat: Material, far: float, shadows: bool, near := 0.0) -> int:
 	var total := 0
 	for key in chunks:
@@ -71,7 +72,8 @@ func build(parent: Node3D, mesh: Mesh, mat: Material, far: float, shadows: bool,
 		total += mm.instance_count
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
-		mi.material_override = mat
+		if mat != null:
+			mi.material_override = mat   # else the mesh's own surface materials
 		mi.position = ch.origin
 		mi.visibility_range_begin = near
 		mi.visibility_range_end = far
@@ -80,8 +82,18 @@ func build(parent: Node3D, mesh: Mesh, mat: Material, far: float, shadows: bool,
 	return total
 
 
-## Full detail up close, `far_mesh` from `switch` m out to `far` m.
-func build_lod(parent: Node3D, mesh: Mesh, far_mesh: Mesh, mat: Material, switch: float, far: float) -> int:
+## Levels of detail: `tiers` is a list of [mesh, material or null, from m, to m, shadows].
+## Returns the instance count once.
+func build_tiers(parent: Node3D, tiers: Array) -> int:
+	var n := 0
+	for t: Array in tiers:
+		n = build(parent, t[0], t[1], t[3], t[4], t[2])
+	return n
+
+
+## `mesh` up close (with `mat`, or its own materials if null), `far_mesh` from `switch` m
+## out to `far` m.
+func build_lod(parent: Node3D, mesh: Mesh, mat: Material, far_mesh: Mesh, far_mat: Material, switch: float, far: float) -> int:
 	var n := build(parent, mesh, mat, switch, true)
-	build(parent, far_mesh, mat, far, false, switch)
+	build(parent, far_mesh, far_mat, far, false, switch)
 	return n

@@ -88,10 +88,10 @@ isn't needed.
 | Path | What |
 |---|---|
 | `scripts/main.gd` | Picks and builds a world, status line, options, keys |
-| `scripts/common/` | Shared: `PowerLink` (UDP), `Rider` (physics, camera), `Route` (road from a rough loop, grade cap), `Roads` (road surface), `Look` (sky, fog, sun), `Instancer` (chunked instances, LOD), `MeshBuilder`, `Meshes` (props), `MinHeap` |
+| `scripts/common/` | Shared: `PowerLink` (UDP), `Rider` (physics, camera), `Route` (road from a rough loop, grade cap), `Roads` (road surface), `Look` (sky, fog, sun), `Instancer` (chunked instances, LOD tiers), `TreeGen` (branching trees, conifers), `MeshBuilder`, `Meshes` (props), `MinHeap` |
 | `scripts/worlds/valley/` | `ValleyWorld`, `ValleyTerrain`, `ValleyScenery` |
 | `scripts/worlds/riverlands/` | `RiverWorld`, `RiverLand` (terrain, water, maps, biomes), `RiverRoad` (A*), `RiverCliffs` (strata skin, scree, ledges), `RiverEcology` (species, competition, age, understory), `RiverScenery` (order, ground cover, bridges, fences) |
-| `shaders/` | Shared toon lighting (`toon.gdshaderinc`), ground/props, grass, water, sky |
+| `shaders/` | Shared toon lighting (`toon.gdshaderinc`), ground/props, foliage (cut-out leaves, crown normals, sway), grass, water, sky |
 
 A new world is a class with `route` and `build(parent, seed)`, registered in
 `main.gd`'s `worlds`.

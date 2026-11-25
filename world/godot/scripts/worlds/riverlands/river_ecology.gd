@@ -22,12 +22,14 @@ extends RefCounted
 ##               mound of soil its roots lifted.
 
 const TREE_CHUNK := 200.0
-const TREE_DETAIL := 900.0
+const TREE_NEAR := 250.0            # full TreeGen models out to here
+const TREE_MID := 600.0             # lighter TreeGen models (no shadows) out to here, blobs beyond
 const TREE_VISIBLE := 2200.0
 const SMALL_CHUNK := 64.0
 const SMALL_VISIBLE := 350.0
 const FERN_VISIBLE := 200.0
 const MOUND_VISIBLE := 250.0
+const VARIANTS := 3                 # different models per species and colour
 
 const TREE_PRIORITY_RADIUS := 1.0   # how close understory may grow to a trunk
 const TREE_RADIUS := 6.0            # trees' viability radius at size 1 (big trees keep more room)
@@ -311,15 +313,11 @@ func _canopy() -> void:
 		land.canopy_conifer[c] = clampf(cc[c] * 1.5, 0.0, 1.0)
 
 
+## Trees as TreeGen models, three variants of each species and colour, with the old
+## blob trees as the far version.
 func build_trees(parent: Node3D, mat: Material) -> void:
 	var palettes := [GREEN, YELLOW, ORANGE, RED]
-	var broad: Array[Instancer] = []
-	for _p in palettes:
-		broad.append(Instancer.new(TREE_CHUNK))
-	var birch := Instancer.new(TREE_CHUNK)
-	var pine := Instancer.new(TREE_CHUNK)
-	var spruce := Instancer.new(TREE_CHUNK)
-	var dead := Instancer.new(TREE_CHUNK)
+	var sets := {}   # "kind:variant" -> Instancer
 	var mounds := Instancer.new(SMALL_CHUNK)
 	for p: Array in placed:
 		var pos := Vector3(p[0], land.height_at(p[0], p[1]), p[1])
@@ -331,28 +329,60 @@ func build_trees(parent: Node3D, mat: Material) -> void:
 				land.vertex_color(pos.x, pos.z, pos.y, n.y, 999.0))
 		var yaw := rng.randf() * TAU
 		var tint := Color(1, 1, 1).darkened(rng.randf() * 0.12)
+		var kind := ""
+		var sy := s
 		match int(p[2]):
 			BROAD:
 				var v: float = p[4] * 0.5 + 0.5 + rng.randf_range(-0.25, 0.25)
-				broad[clampi(int(v * 4.0), 0, 3)].put(pos, yaw, s, s * rng.randf_range(0.9, 1.1), tint)
+				kind = "broad%d" % clampi(int(v * 4.0), 0, 3)
+				sy = s * rng.randf_range(0.9, 1.1)
 			PINE:
-				pine.put(pos, yaw, s, s * rng.randf_range(0.95, 1.15), tint)
+				kind = "pine"
+				sy = s * rng.randf_range(0.95, 1.15)
 			SPRUCE:
-				spruce.put(pos, yaw, s, s * rng.randf_range(0.95, 1.2), tint)
+				kind = "spruce"
+				sy = s * rng.randf_range(0.95, 1.2)
 			BIRCH_TREE:
-				birch.put(pos, yaw, s, s * rng.randf_range(0.95, 1.15), tint)
+				kind = "birch"
+				sy = s * rng.randf_range(0.95, 1.15)
 			DEAD:
-				dead.put(pos, yaw, s, s, tint)
+				kind = "dead"
+		var key := "%s:%d" % [kind, rng.randi() % VARIANTS]
+		if not sets.has(key):
+			sets[key] = Instancer.new(TREE_CHUNK)
+		(sets[key] as Instancer).put(pos, yaw, s, sy, tint)
 	var n := 0
-	for k in palettes.size():
-		var pal: Array = palettes[k]
-		n += broad[k].build_lod(parent, Meshes.broadleaf(rng, pal[0], pal[1]), Meshes.broadleaf_far(rng, pal[0], pal[1]), mat, TREE_DETAIL, TREE_VISIBLE)
-	n += birch.build_lod(parent, Meshes.birch(rng, BIRCH[0], BIRCH[1]), Meshes.birch_far(rng, BIRCH[0], BIRCH[1]), mat, TREE_DETAIL, TREE_VISIBLE)
-	n += pine.build_lod(parent, Meshes.conifer(rng), Meshes.conifer_far(12.6, 3.4), mat, TREE_DETAIL, TREE_VISIBLE)
-	n += spruce.build_lod(parent, Meshes.conifer(rng, Meshes.SPRUCE_LAYERS), Meshes.conifer_far(16.0, 2.7), mat, TREE_DETAIL, TREE_VISIBLE)
-	n += dead.build(parent, Meshes.dead_tree(rng), mat, TREE_DETAIL, true)
+	for key: String in sets:
+		var kind := key.get_slice(":", 0)
+		var inst: Instancer = sets[key]
+		var models: Array
+		var far: Mesh
+		if kind.begins_with("broad"):
+			var pal: Array = palettes[int(kind.substr(5))]
+			models = TreeGen.pair(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
+				return TreeGen.branching(r, TreeGen.BROADLEAF, pal[0], pal[1], TreeGen.BARK, false, lod))
+			far = Meshes.broadleaf_far(rng, pal[0], pal[1])
+		elif kind == "birch":
+			models = TreeGen.pair(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
+				return TreeGen.birch(r, BIRCH[0], BIRCH[1], lod))
+			far = Meshes.birch_far(rng, BIRCH[0], BIRCH[1])
+		elif kind == "pine":
+			models = TreeGen.pair(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
+				return TreeGen.conifer(r, 12.6, 3.4, 7, Meshes.NEEDLE_DARK, Meshes.NEEDLE_LIGHT, lod))
+			far = Meshes.conifer_far(12.6, 3.4)
+		elif kind == "spruce":
+			models = TreeGen.pair(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
+				return TreeGen.conifer(r, 16.0, 2.8, 10, Meshes.NEEDLE_DARK.darkened(0.1), Meshes.NEEDLE_LIGHT, lod))
+			far = Meshes.conifer_far(16.0, 2.7)
+		else:
+			n += inst.build(parent, TreeGen.dead(rng), null, TREE_MID, true)
+			continue
+		n += inst.build_tiers(parent, [
+			[models[0], null, 0.0, TREE_NEAR, true],
+			[models[1], null, TREE_NEAR, TREE_MID, false],
+			[far, mat, TREE_MID, TREE_VISIBLE, false]])
 	var nm := mounds.build(parent, Meshes.mound(), mat, MOUND_VISIBLE, false)
-	print("  trees: %d, root mounds: %d" % [n, nm])
+	print("  trees: %d (%d models), root mounds: %d" % [n, sets.size(), nm])
 
 
 # --- understory --------------------------------------------------------------

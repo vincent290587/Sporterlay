@@ -307,8 +307,10 @@ the particle's layer colour. The result, blurred over 10 m and kept off the clif
 is `scree` (0…1) and `scree_col`; cells the blur reached but no rock did take the colour
 of the layer they sit on.
 
-**Skin** (`build_skin()`): every render quad with a corner steeper than normal.y 0.77
-(about 40°), away from road and water, is split 5×5 (1 m). Each vertex is pushed out along the
+**Skin** (`build_skin_tiles()`): every render quad with a corner steeper than normal.y
+0.77 (about 40°), away from road and water, is split 5×5 (1 m). The skin is cut into
+320 m tiles, each also built at 2×2 (2.5 m): the fine one is drawn to 400 m, the coarse
+one beyond, and tiles out of view aren't drawn at all. Each vertex is pushed out along the
 slope's horizontal direction by `cliffness × (0.3 + layer depth + crag noise × 0.5) + 0.12`
 m, where cliffness ramps from 0 at normal.y 0.77 to 1 at 0.68, so the skin melts into the
 ground at its edges. Colour blends from the ground colour to the layer colour by
@@ -357,10 +359,27 @@ and young edges grow denser. That's the talk's density ramp.
 `canopy_broad` or `canopy_conifer`, blurred over 10 m, scaled ×1.5 and clamped. These drive
 the ground colour, the raised forest floor and the understory.
 
-**Rendering**: one `Instancer` per species and colour (broadleaf in four autumn
-palettes picked by a hue noise plus a random nudge, so colours come in patches with
-strays), full meshes to 900 m and one-blob/one-cone versions to 2.2 km. Shadows reach
-400 m.
+**Tree models** (`common/tree_gen.gd`, `shaders/foliage.gdshader`):
+
+- *Broadleaf and birch*: a trunk with a root flare forks into limbs, 3 levels deep, 2-3
+  children each, every limb in two slightly bent segments, shorter (×0.74) and thinner
+  (×0.62) each level and turned up towards the light. Leaf clusters sit at the branch
+  tips and halfway along the outer limbs, bigger outside and on top. A cluster is a
+  solid lumpy core plus 12 leaf cards (10 for birch) facing outwards, cut out in the
+  shader as scalloped clumps. All leaf normals point away from the crown's centre, so
+  toon light shades the whole crown as one volume; colours run from the palette's dark
+  (inside, underneath) to light (outside, on top). Birch bark is white with random dark
+  marks.
+- *Conifers*: a tapering trunk, a dark solid core cone, and 7 (pine) or 10 (spruce)
+  tiers of 6-8 drooping fronds cut out as jagged needle strips.
+- *Dead trees*: the broadleaf structure without leaves, grey bark.
+- Crowns sway with the wind, more towards the top, each tree in its own phase.
+- Three variants of each species and colour (24 models), picked at random per tree.
+
+**Levels of detail**: full models to 250 m; from 250 to 600 m a lighter model grown
+from the same random state (`TreeGen.pair()`, so the branches match): tip clusters only,
+4 cards each, no thin limbs, no shadows; beyond, the old one-blob/one-cone trees to
+2.2 km. Shadows reach 400 m. Root mounds to 250 m.
 
 **Root mounds**: every tree away from the road stands on a low mound (2.4 m × tree size
 across, 0.45 m high, rim just under the ground) in the ground's colour at that spot, drawn
@@ -490,9 +509,11 @@ and prints the steepest 2 m step was used. It isn't kept in the repo.
 - Some seeds may still give an odd road (a long detour, a crossing over itself). Check
   the map.
 - About 62k trees (each with a root mound), 280k understory props, 140k ferns and 550k
-  grass clumps (seed 7, 7.4 km road). At 1080p on the dev box (RX 7900 XT): 351 fps
-  average, 318 fps 1 % low, 0.93 GB video memory, 0.54 GB RAM, 24 M triangles a frame.
-  Expected on the ride PC (RTX 3060 Ti): roughly 120 fps. Not measured there yet.
+  grass clumps (seed 7, 7.4 km road). At 1080p on the dev box (RX 7900 XT): 333 fps
+  average, 245 fps 1 % low, 0.73 GB video memory, 0.64 GB RAM, 18 M triangles a frame.
+  Expected on the ride PC (RTX 3060 Ti): roughly 110 fps. Not measured there yet.
+- Distant woods (beyond 600 m) are still one-blob trees, which look plain next to the
+  new models.
 - The basin has many rivers, so the loop crosses water ~15 times, mostly small streams.
 
 ## References

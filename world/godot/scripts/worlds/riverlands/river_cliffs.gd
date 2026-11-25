@@ -19,7 +19,11 @@ extends RefCounted
 
 const CLIFF_NY_START := 0.77    # normal.y where the skin starts
 const CLIFF_NY_FULL := 0.68     # and where it's fully out
-const SUB := 5                  # quad subdivision (1 m)
+const SUB := 5                  # quad subdivision up close (1 m)
+const SUB_FAR := 2              # and further out (2.5 m)
+const TILE := 64                # render quads per tile side (320 m)
+const SKIN_NEAR := 400.0
+const SKIN_FAR := 4000.0
 const LEDGE_UP := 0.8           # face normal.y for a ledge
 const STEPS := int(400.0 / RiverLand.A_STEP)   # rock fall travels up to 400 m
 
@@ -163,11 +167,41 @@ func _cliffness(ny: float) -> float:
 	return smoothstep(CLIFF_NY_START, CLIFF_NY_FULL, ny)
 
 
-## The rock skin over steep ground (faceted), and the ledges on it.
-func build_skin() -> ArrayMesh:
+## The rock skin in tiles of TILE render quads, each at full detail (SUB) up to
+## SKIN_NEAR m and coarser (SUB_FAR) beyond, so far cliffs cost little and tiles out of
+## view aren't drawn. Ledges come from the full-detail skin.
+func build_skin_tiles(parent: Node3D, mat: Material) -> void:
+	ledges.clear()
+	var near := _skin(SUB)
+	var far := _skin(SUB_FAR)
+	var count := 0
+	for key in near:
+		var b: MeshBuilder = near[key]
+		var skin := b.faceted()
+		_find_ledges(skin)
+		count += _tile(parent, skin.commit(), mat, 0.0, SKIN_NEAR, true)
+		if far.has(key):
+			_tile(parent, (far[key] as MeshBuilder).faceted().commit(), mat, SKIN_NEAR, SKIN_FAR, true)
+	print("  cliff tiles: %d" % count)
+
+
+func _tile(parent: Node3D, mesh: ArrayMesh, mat: Material, from: float, to: float, shadows: bool) -> int:
+	var aabb := mesh.get_aabb()
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.visibility_range_begin = from
+	mi.visibility_range_end = to
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+	return 1 if aabb.size != Vector3.ZERO else 0
+
+
+## Skin builders per tile, each render quad split sub x sub.
+func _skin(sub: int) -> Dictionary:
 	var n := RiverLand.N
 	var step := RiverLand.STEP
-	var b := MeshBuilder.new()
+	var tiles := {}
 	var nrm := PackedVector3Array()
 	nrm.resize(n * n)
 	for j in n:
@@ -193,12 +227,16 @@ func build_skin() -> ArrayMesh:
 				var cx := -RiverLand.HALF + (c % n) * step
 				var cz := -RiverLand.HALF + (c / n) * step
 				gc.append(land.vertex_color(cx, cz, land.heights[c], nrm[c].y, 999.0))
-			# (SUB+1)^2 vertices over the quad, then 2 triangles per small quad
+			var key := Vector2i(i / TILE, j / TILE)
+			if not tiles.has(key):
+				tiles[key] = MeshBuilder.new()
+			var b: MeshBuilder = tiles[key]
+			# (sub+1)^2 vertices over the quad, then 2 triangles per small quad
 			var ids := PackedInt32Array()
-			for sj in SUB + 1:
-				for si in SUB + 1:
-					var tx := float(si) / SUB
-					var tz := float(sj) / SUB
+			for sj in sub + 1:
+				for si in sub + 1:
+					var tx := float(si) / sub
+					var tz := float(sj) / sub
 					var h := lerpf(lerpf(land.heights[k], land.heights[k + 1], tx), lerpf(land.heights[k + n], land.heights[k + n + 1], tx), tz)
 					var nv: Vector3 = nrm[k].lerp(nrm[k + 1], tx).lerp(nrm[k + n].lerp(nrm[k + n + 1], tx), tz).normalized()
 					var x := x0 + tx * step
@@ -211,20 +249,17 @@ func build_skin() -> ArrayMesh:
 					var ground: Color = (gc[0] as Color).lerp(gc[1], tx).lerp((gc[3] as Color).lerp(gc[2], tx), tz)
 					var col := ground.lerp(info[1], w)
 					ids.append(b.add(p, nv, col))
-			for sj in SUB:
-				for si in SUB:
-					var a := ids[sj * (SUB + 1) + si]
-					var c2 := ids[(sj + 1) * (SUB + 1) + si + 1]
-					b.tri(a, ids[sj * (SUB + 1) + si + 1], c2)
-					b.tri(a, c2, ids[(sj + 1) * (SUB + 1) + si])
-	var skin := b.faceted()
-	_find_ledges(skin)
-	return skin.commit()
+			for sj in sub:
+				for si in sub:
+					var a := ids[sj * (sub + 1) + si]
+					var c2 := ids[(sj + 1) * (sub + 1) + si + 1]
+					b.tri(a, ids[sj * (sub + 1) + si + 1], c2)
+					b.tri(a, c2, ids[(sj + 1) * (sub + 1) + si])
+	return tiles
 
 
 ## Upward faces well out on the cliff, with no layer above sticking out further.
 func _find_ledges(skin: MeshBuilder) -> void:
-	ledges.clear()
 	for t in range(0, skin.indices.size(), 3):
 		var nv := skin.normals[skin.indices[t]]
 		if nv.y < LEDGE_UP:

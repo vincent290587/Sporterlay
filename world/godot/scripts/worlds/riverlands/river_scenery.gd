@@ -30,7 +30,7 @@ static func build(parent: Node3D, land: RiverLand, route: Route, bridge: PackedB
 	print("  trees built: %d ms" % (Time.get_ticks_msec() - t))
 	_mesh(parent, land.build_mesh(), toon, true)
 	print("  ground mesh: %d ms" % (Time.get_ticks_msec() - t))
-	_mesh(parent, cliffs.build_skin(), toon, true)
+	cliffs.build_skin_tiles(parent, toon)
 	print("  cliff skin: %d ms" % (Time.get_ticks_msec() - t))
 	_mesh(parent, Roads.ribbon(route, bridge), toon, true)
 	var water := ShaderMaterial.new()

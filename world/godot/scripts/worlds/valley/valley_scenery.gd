@@ -12,6 +12,8 @@ const GRASS_CHUNK := 32.0
 const GRASS_VISIBLE := 210.0
 const TREE_CHUNK := 200.0
 const TREE_VISIBLE := 1500.0
+const TREE_NEAR := 250.0         # full TreeGen models out to here
+const TREE_MID := 700.0          # lighter ones out to here, blobs beyond
 
 
 static func build(parent: Node3D, terrain: ValleyTerrain, route: Route, seed: int) -> void:
@@ -23,7 +25,9 @@ static func build(parent: Node3D, terrain: ValleyTerrain, route: Route, seed: in
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	_grass(parent, terrain, route, rng)
-	_trees(parent, terrain, rng, toon)
+	var tree_rng := RandomNumberGenerator.new()   # own generator: grass changes don't move the trees
+	tree_rng.seed = seed + 1
+	_trees(parent, terrain, tree_rng, toon)
 	_rocks(parent, terrain, rng, toon)
 
 
@@ -111,8 +115,14 @@ static func _trees(parent: Node3D, terrain: ValleyTerrain, rng: RandomNumberGene
 			else:
 				broad.put(pos, rng.randf() * TAU, s, s * rng.randf_range(0.85, 1.1), tint)
 		x += cell
-	var n := broad.build(parent, Meshes.broadleaf(rng), mat, TREE_VISIBLE, true)
-	n += pine.build(parent, Meshes.conifer(rng), mat, TREE_VISIBLE, true)
+	var bl := TreeGen.pair(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
+		return TreeGen.branching(r, TreeGen.BROADLEAF, Meshes.LEAF_DARK, Meshes.LEAF_LIGHT, TreeGen.BARK, false, lod))
+	var cf := TreeGen.pair(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
+		return TreeGen.conifer(r, 12.6, 3.4, 7, Meshes.NEEDLE_DARK, Meshes.NEEDLE_LIGHT, lod))
+	var n := broad.build_tiers(parent, [[bl[0], null, 0.0, TREE_NEAR, true], [bl[1], null, TREE_NEAR, TREE_MID, false],
+		[Meshes.broadleaf_far(rng), mat, TREE_MID, TREE_VISIBLE, false]])
+	n += pine.build_tiers(parent, [[cf[0], null, 0.0, TREE_NEAR, true], [cf[1], null, TREE_NEAR, TREE_MID, false],
+		[Meshes.conifer_far(12.6, 3.4), mat, TREE_MID, TREE_VISIBLE, false]])
 	print("trees: ", n)
 
 
