@@ -36,6 +36,9 @@ freshwater, then rule-based biomes and layered placement):
 
 `--map=out.png` saves a top-down picture of the biomes, water and road.
 
+The full logic, parameters, tools and tuning guide are in
+[docs/riverlands-generation.md](docs/riverlands-generation.md).
+
 ## How it connects to Sporterlay
 
 One way, and optional on both sides:
