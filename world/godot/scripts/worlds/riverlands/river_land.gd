@@ -86,6 +86,8 @@ var scree := PackedFloat32Array()   # rock fall below cliffs, 0..1
 var scree_col := PackedColorArray()
 var canopy_broad := PackedFloat32Array()
 var canopy_conifer := PackedFloat32Array()
+var canopy_col := PackedColorArray()   # average crown colour (sRGB), for the far ground
+var woods := FastNoiseLite.new()       # forest patches on the far hills (the skirt)
 var strata: RiverCliffs             # cliff layer colours, once the cliffs are made
 
 # render grid (N x N)
@@ -112,6 +114,9 @@ func setup(seed: int) -> void:
 	tint.seed = seed + 5
 	tint.frequency = 0.006
 	tint.fractal_octaves = 3
+	woods.seed = seed + 6
+	woods.frequency = 0.0022
+	woods.fractal_octaves = 3
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	var a := rng.randf() * TAU
@@ -426,6 +431,7 @@ func _analyse() -> void:
 	scree_col.resize(n)
 	canopy_broad.resize(n)
 	canopy_conifer.resize(n)
+	canopy_col.resize(n)
 	ground.resize(n)
 
 	# distance to water: two-pass chamfer, carrying the nearest water level along
@@ -728,6 +734,20 @@ func vertex_color(x: float, z: float, h: float, ny: float, rd: float) -> Color:
 	return c
 
 
+## Forest on the far hills (outside the simulated basin): patches on lower, gentler
+## slopes. Colour (sRGB) and cover in alpha; conifers higher up.
+func skirt_woods(x: float, z: float, h: float, ny: float) -> Color:
+	var cover := smoothstep(-0.1, 0.25, woods.get_noise_2d(x, z)) * (1.0 - smoothstep(480.0, 620.0, h)) \
+		* smoothstep(0.6, 0.78, ny) * smoothstep(-30.0, 10.0, h)
+	if cover <= 0.0:
+		return Color(0, 0, 0, 0)
+	var conifer := smoothstep(220.0, 380.0, h + 80.0 * tint.get_noise_2d(x * 2.0, z * 2.0))
+	var hue := woods.get_noise_2d(x * 4.0 + 900.0, z * 4.0)
+	var col := RiverEcology.crown_color(RiverEcology.SPRUCE if conifer > 0.5 else RiverEcology.BROAD, hue)
+	col.a = cover
+	return col
+
+
 func _far_color(x: float, z: float, h: float, ny: float) -> Color:
 	var t := tint.get_noise_2d(x, z) * 0.5 + 0.5
 	var c := NEEDLES.lerp(MEADOW_GOLD, t * 0.6)
@@ -735,6 +755,19 @@ func _far_color(x: float, z: float, h: float, ny: float) -> Color:
 	c = c.lerp(ROCK_HIGH, smoothstep(250.0, 400.0, h))
 	c = c.lerp(SNOW_COLOR, smoothstep(SNOW - 40.0, SNOW + 20.0, h + 60.0 * (t - 0.5) * 2.0) * smoothstep(0.55, 0.72, ny))
 	return c
+
+
+## CUSTOM0 for a ground vertex: the canopy colour above it and its cover (0..1), which
+## the ground shader blends in with distance so far forests read as forests.
+func _custom_canopy(b: MeshBuilder, x: float, z: float) -> void:
+	var cover := clampf(field(canopy_broad, x, z) + field(canopy_conifer, x, z), 0.0, 1.0)
+	var col := canopy_col[cell(x, z)]
+	if _edge(x, z) > 0.0:   # blend into the far woods at the edge of the basin
+		var w := skirt_woods(x, z, height_at(x, z), 1.0)
+		var e := _edge(x, z)
+		col = col.lerp(Color(w.r, w.g, w.b), e) if cover > 0.01 else Color(w.r, w.g, w.b)
+		cover = lerpf(cover, w.a, e)
+	b.custom.append_array(PackedFloat32Array([col.r, col.g, col.b, cover]))
 
 
 func _grid_normal(i: int, j: int) -> Vector3:
@@ -754,6 +787,7 @@ func build_mesh() -> ArrayMesh:
 			var k := j * N + i
 			var n := _grid_normal(i, j)
 			b.add(Vector3(x, heights[k], z), n, vertex_color(x, z, heights[k], n.y, road_d[k]))
+			_custom_canopy(b, x, z)
 	for j in N - 1:
 		for i in N - 1:
 			var k := j * N + i
@@ -786,6 +820,8 @@ func build_mesh() -> ArrayMesh:
 			var e := maxf(STEP, r * 0.004)
 			var n := Vector3(base(x - e, z) - base(x + e, z), 2.0 * e, base(x, z - e) - base(x, z + e)).normalized()
 			row.append(b.add(Vector3(x, h, z), n, _far_color(x, z, h, n.y)))
+			var w := skirt_woods(x, z, h, n.y)
+			b.custom.append_array(PackedFloat32Array([w.r, w.g, w.b, w.a]))
 		for a in p_count:
 			var a2 := (a + 1) % p_count
 			b.tri(prev[a], prev[a2], row[a])

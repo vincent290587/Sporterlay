@@ -25,7 +25,7 @@ const TREE_CHUNK := 100.0          # trees pick their own tier, so chunks only n
 const TREE_NEAR := 250.0            # full TreeGen models out to here
 const TREE_MID := 600.0             # lighter TreeGen models (no shadows) out to here
 const TREE_FAR := 1300.0            # far TreeGen crowns (no leaf cards) out to here, blobs beyond
-const TREE_VISIBLE := 2200.0
+const TREE_VISIBLE := 3200.0
 const SMALL_CHUNK := 100.0           # bigger chunks: many prop models, fewer draw calls
 const SMALL_VISIBLE := 350.0
 const FERN_VISIBLE := 200.0
@@ -172,8 +172,10 @@ func _viabilities(seed: int) -> void:
 			vs[c] = forest * (ramp(h, 60.0, 180.0) + 1.2 * (0.5 - sun) + 0.3 * occl) \
 				* (0.75 + 0.5 * (noises[1] as FastNoiseLite).get_noise_2d(x + nx, z + nz)) * e
 			# pine: drier, sunnier, convex ground
-			vp[c] = forest * (0.5 * ramp(h, 20.0, 120.0) + 0.6 * ramp(sun, 0.5, 0.8) + 0.5 * ridge) \
+			vp[c] = (forest * (0.5 * ramp(h, 20.0, 120.0) + 0.6 * ramp(sun, 0.5, 0.8) + 0.5 * ridge) \
+				+ land.heath[c] * 0.33) \
 				* (0.75 + 0.5 * (noises[2] as FastNoiseLite).get_noise_2d(x + nx, z + nz)) * e
+			# (the heath term: an open pine woodland on dry, sunny ground, so heath isn't bare)
 			# birch: near water, thin woods
 			vbi[c] = (forest * 0.5 + 0.25) * (1.2 * wet + 0.3 * (1.0 - forest)) \
 				* (0.75 + 0.5 * (noises[3] as FastNoiseLite).get_noise_2d(x + nx, z + nz)) * e
@@ -323,6 +325,11 @@ func _canopy() -> void:
 	cb.resize(na * na)
 	var cc := PackedFloat32Array()
 	cc.resize(na * na)
+	var sr := PackedFloat32Array()   # crown colour sums, for the far canopy colour
+	sr.resize(na * na)
+	var sg := sr.duplicate()
+	var sbl := sr.duplicate()
+	var sw := sr.duplicate()
 	for p: Array in placed:
 		var c := land.cell(p[0], p[1])
 		var crown: float = p[3] * 0.6 * 100.0 / (RiverLand.A_STEP * RiverLand.A_STEP)
@@ -330,11 +337,36 @@ func _canopy() -> void:
 			cc[c] += crown
 		elif p[2] != DEAD:
 			cb[c] += crown
+		if p[2] != DEAD:
+			var col := crown_color(int(p[2]), float(p[4]))
+			sr[c] += col.r * crown
+			sg[c] += col.g * crown
+			sbl[c] += col.b * crown
+			sw[c] += crown
 	cb = land.blur_m(cb, 10.0)
 	cc = land.blur_m(cc, 10.0)
+	sr = land.blur_m(sr, 20.0)
+	sg = land.blur_m(sg, 20.0)
+	sbl = land.blur_m(sbl, 20.0)
+	sw = land.blur_m(sw, 20.0)
 	for c in na * na:
 		land.canopy_broad[c] = clampf(cb[c] * 1.5, 0.0, 1.0)
 		land.canopy_conifer[c] = clampf(cc[c] * 1.5, 0.0, 1.0)
+		if sw[c] > 0.0001:
+			land.canopy_col[c] = Color(sr[c] / sw[c], sg[c] / sw[c], sbl[c] / sw[c])
+
+
+## A crown's colour seen from afar (sRGB), by species and broadleaf hue.
+static func crown_color(species: int, hue: float) -> Color:
+	match species:
+		PINE, SPRUCE:
+			return Meshes.NEEDLE_DARK.lerp(Meshes.NEEDLE_LIGHT, 0.45)
+		BIRCH_TREE:
+			return BIRCH[0].lerp(BIRCH[1], 0.55)
+		TWISTED:
+			return RED[0].lerp(RED[1], 0.5)
+	var pal: Array = [GREEN, YELLOW, ORANGE, RED][clampi(int((hue * 0.5 + 0.5) * 4.0), 0, 3)]
+	return (pal[0] as Color).lerp(pal[1], 0.55)
 
 
 ## Trees as TreeGen models, three variants of each species and colour, with the old
