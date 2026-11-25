@@ -10,6 +10,7 @@ extends Node3D
 ##   --shot=path.png [--frames=90]  save a screenshot and quit
 ##   --map=path.png  save a top-down biome map (worlds that have one)
 ##   --bench=60     ride for that many seconds with vsync off, print the frame rate, quit
+##   --size=1920x1080  open in a window of that size
 ## Keys: Esc quit, H hide the text, F3 frame rate, F11 fullscreen, F2 next world,
 ## Up/Down manual power without Sporterlay.
 
@@ -42,6 +43,10 @@ func _ready() -> void:
 	manual_power = float(args.get("power", "0"))
 	_shot = args.get("shot", "")
 	_shot_frames = int(args.get("frames", "90"))
+	if args.has("size"):
+		var wh: PackedStringArray = str(args.size).split("x")
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		DisplayServer.window_set_size(Vector2i(int(wh[0]), int(wh[1])))
 	_bench = float(args.get("bench", "0"))
 	if _bench > 0.0:
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -128,6 +133,13 @@ func _report_bench() -> void:
 	var size := DisplayServer.window_get_size()
 	print("bench %s: %dx%d, %d frames over %.0f s: average %.0f fps, 1%% low %.0f fps, worst frame %.1f ms, %.2f km ridden" % [
 		world_name, size.x, size.y, n, total, n / total, 1.0 / low, f[n - 1] * 1000.0, rider.odometer / 1000.0])
+	print("  video memory %.0f MB (textures %.0f, buffers %.0f), RAM %.0f MB, %d draw calls, %.1f M primitives in the last frame" % [
+		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,
+		Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0,
+		Performance.get_monitor(Performance.RENDER_BUFFER_MEM_USED) / 1048576.0,
+		Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
+		Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+		Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME) / 1e6])
 	get_tree().quit()
 
 

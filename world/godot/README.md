@@ -69,7 +69,7 @@ Keys: **Esc** quit, **H** hide the status line, **F3** frame rate, **F2** next w
 
 Options (after `--` when launching the editor binary, directly on an exported exe):
 `--port=47810` (must match Sporterlay's `world_port`), `--world=riverlands`,
-`--seed=7` (another variant), `--map=out.png`, `--bench=60` (ride 60 s with vsync off and print the frame rate),
+`--seed=7` (another variant), `--map=out.png`, `--bench=60` (ride 60 s with vsync off and print the frame rate and memory use), `--size=1920x1080` (window size),
 `--power=200`, `--at=1200` (start that far along the road),
 `--shot=out.png --frames=90` (save a screenshot and quit; used for checks).
 
