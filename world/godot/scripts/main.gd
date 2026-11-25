@@ -21,7 +21,7 @@ extends Node3D
 ## Keys: Esc quit, H hide the text, F3 frame rate, F4 detail levels, F11 fullscreen, F2 next world,
 ## Up/Down manual power without Sporterlay.
 
-var worlds := {"valley": ValleyWorld, "riverlands": RiverWorld, "transylvania": TransWorld, "canyon": CanyonWorld, "endless": EndlessWorld, "gallery": GalleryWorld}
+var worlds := {"valley": ValleyWorld, "riverlands": RiverWorld, "transylvania": TransWorld, "canyon": CanyonWorld, "endless": EndlessWorld, "giant": GiantWorld, "gallery": GalleryWorld}
 var cam_override := []
 var look_yaw := 0.0
 var look_pitch := 0.0

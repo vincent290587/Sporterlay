@@ -52,7 +52,7 @@ class WorldLink:
 
 
 # worlds offered in the tray (the world's `gallery` is a test bench, left out)
-WORLDS = {"valley": "Valley", "riverlands": "Riverlands", "transylvania": "Transylvania", "canyon": "Canyon", "endless": "Endless"}
+WORLDS = {"valley": "Valley", "riverlands": "Riverlands", "transylvania": "Transylvania", "canyon": "Canyon", "endless": "Endless", "giant": "Giant Wetland"}
 
 PROJECT = Path(__file__).resolve().parent.parent / "world" / "godot"   # only in a source checkout
 

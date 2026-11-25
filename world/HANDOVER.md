@@ -22,6 +22,10 @@ The Godot 4.7 project is in `world/godot`. The earlier Unreal 5 version is in
 |---|---|---|
 | Valley | `valley` | Green summer valley in a ring of snowy mountains, 4.7 km loop. Builds in ~3 s |
 | Riverlands | `riverlands` | Autumn river basin, 3.6 km across, 7.4 km loop. Builds in ~40 s on the dev box |
+| Canyon | `canyon` | Golden-hour canyon country: mesas, Petra-like ruins, an oasis, vultures |
+| Endless | `endless` | An endless streamed road through valley, autumn, dusk forest and canyon |
+| Giant | `giant` | Flooded giant world: islands, a boardwalk over water, trees at 10x normal size |
+| Transylvania | `transylvania` | Late dusk in the Carpathians: misty hollows, a torch-lit climb to a castle |
 | Gallery | `gallery` | Test bench: every tree, grass and flower model side by side |
 
 Riverlands, roughly in the order it's generated:
