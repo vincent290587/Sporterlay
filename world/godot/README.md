@@ -64,12 +64,12 @@ Sporterlay ──UDP 127.0.0.1:47810, 4 Hz──▶ PowerLink ──▶ Rider (o
    `Godot_v4.7.2-stable_win64.exe --path world/godot`
 3. In Sporterlay: tray → Extras → *Send power to the virtual world*.
 
-Keys: **Esc** quit, **H** hide the status line, **F2** next world, **F11** fullscreen/windowed,
+Keys: **Esc** quit, **H** hide the status line, **F3** frame rate, **F2** next world, **F11** fullscreen/windowed,
 **Up/Down** manual power while Sporterlay isn't sending.
 
 Options (after `--` when launching the editor binary, directly on an exported exe):
 `--port=47810` (must match Sporterlay's `world_port`), `--world=riverlands`,
-`--seed=7` (another variant), `--map=out.png`,
+`--seed=7` (another variant), `--map=out.png`, `--bench=60` (ride 60 s with vsync off and print the frame rate),
 `--power=200`, `--at=1200` (start that far along the road),
 `--shot=out.png --frames=90` (save a screenshot and quit; used for checks).
 

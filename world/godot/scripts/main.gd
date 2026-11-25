@@ -9,7 +9,8 @@ extends Node3D
 ##   --at=1200      start this many metres along the road
 ##   --shot=path.png [--frames=90]  save a screenshot and quit
 ##   --map=path.png  save a top-down biome map (worlds that have one)
-## Keys: Esc quit, H hide the text, F11 fullscreen, F2 next world,
+##   --bench=60     ride for that many seconds with vsync off, print the frame rate, quit
+## Keys: Esc quit, H hide the text, F3 frame rate, F11 fullscreen, F2 next world,
 ## Up/Down manual power without Sporterlay.
 
 var worlds := {"valley": ValleyWorld, "riverlands": RiverWorld}
@@ -22,6 +23,10 @@ var rider := Rider.new()
 var hud := Label.new()
 var manual_power := 0.0
 var args := {}
+var show_fps := false
+var _bench := 0.0
+var _bench_frames := PackedFloat32Array()
+var _bench_skip := 2.0   # seconds to settle (shader compiles) before measuring
 var _shot := ""
 var _shot_frames := 90
 var _frame := 0
@@ -37,6 +42,11 @@ func _ready() -> void:
 	manual_power = float(args.get("power", "0"))
 	_shot = args.get("shot", "")
 	_shot_frames = int(args.get("frames", "90"))
+	_bench = float(args.get("bench", "0"))
+	if _bench > 0.0:
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+		if manual_power <= 0.0:
+			manual_power = 220.0
 
 	link.port = int(args.get("port", "47810"))
 	add_child(link)
@@ -83,7 +93,17 @@ func _process(delta: float) -> void:
 	var watts := link.power if link.connected else manual_power
 	rider.advance(watts, delta)
 	var src := "Sporterlay" if link.connected else (link.error if link.error != "" else "manual (Up/Down) - waiting for Sporterlay")
-	hud.text = "%s   %d W   %.1f km/h   %+.1f %%   %.2f km   [%s]" % [world_name.capitalize(), watts, rider.speed * 3.6, rider.grade, rider.odometer / 1000.0, src]
+	var fps := "   %d fps" % Engine.get_frames_per_second() if show_fps else ""
+	hud.text = "%s   %d W   %.1f km/h   %+.1f %%   %.2f km   [%s]" % [world_name.capitalize(), watts, rider.speed * 3.6, rider.grade, rider.odometer / 1000.0, src] + fps
+
+	if _bench > 0.0:
+		if _bench_skip > 0.0:
+			_bench_skip -= delta
+		else:
+			_bench_frames.append(delta)
+			_bench -= delta
+			if _bench <= 0.0:
+				_report_bench()
 
 	if _shot != "":
 		_frame += 1
@@ -91,6 +111,24 @@ func _process(delta: float) -> void:
 			get_viewport().get_texture().get_image().save_png(_shot)
 			print("saved ", _shot)
 			get_tree().quit()
+
+
+func _report_bench() -> void:
+	var f := _bench_frames.duplicate()
+	f.sort()
+	var total := 0.0
+	for d in f:
+		total += d
+	var n := f.size()
+	var worst_1pc := f.slice(int(n * 0.99))
+	var low := 0.0
+	for d in worst_1pc:
+		low += d
+	low /= maxi(worst_1pc.size(), 1)
+	var size := DisplayServer.window_get_size()
+	print("bench %s: %dx%d, %d frames over %.0f s: average %.0f fps, 1%% low %.0f fps, worst frame %.1f ms, %.2f km ridden" % [
+		world_name, size.x, size.y, n, total, n / total, 1.0 / low, f[n - 1] * 1000.0, rider.odometer / 1000.0])
+	get_tree().quit()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -102,6 +140,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_tree().quit()
 		KEY_H:
 			hud.visible = not hud.visible
+		KEY_F3:
+			show_fps = not show_fps
 		KEY_F2:
 			var names := worlds.keys()
 			world_name = names[(names.find(world_name) + 1) % names.size()]
