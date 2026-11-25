@@ -3,3 +3,6 @@ __pycache__/
 build/
 dist/
 *.spec
+
+# reference material that isn't ours (talk slides etc.)
+world/*.pdf
