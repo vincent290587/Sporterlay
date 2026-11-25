@@ -3,7 +3,7 @@ extends Node3D
 ##
 ## Command line (after `--` when run from the editor binary):
 ##   --port=47810   UDP port Sporterlay sends power to
-##   --world=valley which world: valley, riverlands, transylvania, canyon, gallery
+##   --world=valley which world: valley, riverlands, transylvania, canyon, endless, gallery
 ##   --seed=7       which variant of it to generate
 ##   --power=200    fixed power when Sporterlay isn't sending (testing)
 ##   --at=1200      start this many metres along the road
@@ -21,7 +21,7 @@ extends Node3D
 ## Keys: Esc quit, H hide the text, F3 frame rate, F4 detail levels, F11 fullscreen, F2 next world,
 ## Up/Down manual power without Sporterlay.
 
-var worlds := {"valley": ValleyWorld, "riverlands": RiverWorld, "transylvania": TransWorld, "canyon": CanyonWorld, "gallery": GalleryWorld}
+var worlds := {"valley": ValleyWorld, "riverlands": RiverWorld, "transylvania": TransWorld, "canyon": CanyonWorld, "endless": EndlessWorld, "gallery": GalleryWorld}
 var cam_override := []
 var look_yaw := 0.0
 var look_pitch := 0.0
@@ -110,12 +110,15 @@ func _load_world(at: float) -> void:
 	if args.has("map") and world.has_method("save_map"):
 		world.save_map(args.map)
 	var route: Route = world.route
-	print("%s %d: road %.2f km, built in %d ms" % [world_name, seed, route.length / 1000.0, Time.get_ticks_msec() - t0])
+	var km := "endless" if route.length > 1e8 else "%.2f km" % (route.length / 1000.0)
+	print("%s %d: road %s, built in %d ms" % [world_name, seed, km, Time.get_ticks_msec() - t0])
 	rider.route = route
 	rider.distance = at
 	rider.speed = 0.0
 	rider.reset()
 	rider.advance(0.0, 0.0)
+	if world.has_method("attach"):
+		world.attach(rider)   # streamed worlds build around the rider
 
 
 func _process(delta: float) -> void:

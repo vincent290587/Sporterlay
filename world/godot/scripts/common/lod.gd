@@ -109,6 +109,24 @@ static func add(name: String, node: GeometryInstance3D, from: float, to: float, 
 	m._apply_entry(e, m.categories[name])
 
 
+## Forgets nodes that are about to be freed (streamed worlds unload tiles).
+static func forget(nodes: Array) -> void:
+	var m := _self
+	if m == null or nodes.is_empty():
+		return
+	var gone := {}
+	for n in nodes:
+		gone[n] = true
+	for c: Category in m.categories.values():
+		var kept: Array[Entry] = []
+		for e: Entry in c.entries:
+			if not gone.has(e.node):
+				kept.append(e)
+		c.entries = kept
+	m._apply_at = 0
+	m._scan_at = 0
+
+
 ## A tier material whose instances dissolve in and out at `from` and `to` m (base).
 static func add_fade(name: String, material: ShaderMaterial, from: float, to: float) -> void:
 	var m := _self
