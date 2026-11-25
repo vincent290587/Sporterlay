@@ -3,7 +3,7 @@ extends Node3D
 ##
 ## Command line (after `--` when run from the editor binary):
 ##   --port=47810   UDP port Sporterlay sends power to
-##   --world=valley which world: valley, riverlands
+##   --world=valley which world: valley, riverlands, transylvania, gallery
 ##   --seed=7       which variant of it to generate
 ##   --power=200    fixed power when Sporterlay isn't sending (testing)
 ##   --at=1200      start this many metres along the road
@@ -21,7 +21,7 @@ extends Node3D
 ## Keys: Esc quit, H hide the text, F3 frame rate, F4 detail levels, F11 fullscreen, F2 next world,
 ## Up/Down manual power without Sporterlay.
 
-var worlds := {"valley": ValleyWorld, "riverlands": RiverWorld, "gallery": GalleryWorld}
+var worlds := {"valley": ValleyWorld, "riverlands": RiverWorld, "transylvania": TransWorld, "gallery": GalleryWorld}
 var cam_override := []
 var look_yaw := 0.0
 var look_pitch := 0.0
