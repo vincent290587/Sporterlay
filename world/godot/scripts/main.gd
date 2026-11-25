@@ -11,6 +11,7 @@ extends Node3D
 ##   --map=path.png  save a top-down biome map (worlds that have one)
 ##   --bench=60     ride for that many seconds with vsync off, print the frame rate, quit
 ##   --size=1920x1080  open in a window of that size
+##   --cam=x,y,z,tx,ty,tz  fixed camera at x,y,z looking at tx,ty,tz (model checks)
 ##   --quality=high low|medium|high|ultra: starting draw distances (see Lod)
 ##   --target-fps=60  frame rate the LOD manager keeps while riding
 ##   --auto-lod=on  let it adjust draw distances to the budget (off by default in --bench)
@@ -18,7 +19,8 @@ extends Node3D
 ## Keys: Esc quit, H hide the text, F3 frame rate, F4 detail levels, F11 fullscreen, F2 next world,
 ## Up/Down manual power without Sporterlay.
 
-var worlds := {"valley": ValleyWorld, "riverlands": RiverWorld}
+var worlds := {"valley": ValleyWorld, "riverlands": RiverWorld, "gallery": GalleryWorld}
+var cam_override := []
 
 var world_name := "valley"
 var seed := 7
@@ -53,6 +55,8 @@ func _ready() -> void:
 		var wh: PackedStringArray = str(args.size).split("x")
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		DisplayServer.window_set_size(Vector2i(int(wh[0]), int(wh[1])))
+	if args.has("cam"):
+		cam_override = Array(str(args.cam).split(",")).map(func(v: String) -> float: return float(v))
 	_bench = float(args.get("bench", "0"))
 	if _bench > 0.0:
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -110,6 +114,9 @@ func _load_world(at: float) -> void:
 func _process(delta: float) -> void:
 	var watts := link.power if link.connected else manual_power
 	rider.advance(watts, delta)
+	if cam_override.size() == 6:
+		var eye := Vector3(cam_override[0], cam_override[1], cam_override[2])
+		rider.transform = Transform3D(Basis(), eye).looking_at(Vector3(cam_override[3], cam_override[4], cam_override[5]), Vector3.UP)
 	var src := "Sporterlay" if link.connected else (link.error if link.error != "" else "manual (Up/Down) - waiting for Sporterlay")
 	var fps := "   %d fps" % Engine.get_frames_per_second() if show_fps else ""
 	if show_lod:

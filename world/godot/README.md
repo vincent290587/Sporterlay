@@ -8,7 +8,8 @@ seed when a world loads, so there are no art assets in the repo.
 | Valley | `valley` | Green valley, snowy mountain ring, a wobbly loop. Pure noise. | ~1.6 s |
 | Riverlands | `riverlands` | Autumn river basin (3.6 km across, 7.5 km loop) shaped by simulated water, layered cliffs and scree, forests of competing species, a planned road with bridges and fences | ~30 s |
 
-F2 switches to the next world while riding.
+F2 switches to the next world while riding. A third world, `gallery`, is a test bench:
+every tree model at each level of detail on flat ground (use with `--cam=`).
 
 ## How Riverlands is generated
 
@@ -69,7 +70,7 @@ Keys: **Esc** quit, **H** hide the status line, **F3** frame rate, **F4** detail
 
 Options (after `--` when launching the editor binary, directly on an exported exe):
 `--port=47810` (must match Sporterlay's `world_port`), `--world=riverlands`,
-`--seed=7` (another variant), `--map=out.png`, `--bench=60` (ride 60 s with vsync off and print the frame rate and memory use), `--size=1920x1080` (window size), `--quality=high`, `--target-fps=60`, `--auto-lod=on`,
+`--seed=7` (another variant), `--map=out.png`, `--bench=60` (ride 60 s with vsync off and print the frame rate and memory use), `--size=1920x1080` (window size), `--cam=x,y,z,tx,ty,tz` (fixed camera), `--quality=high`, `--target-fps=60`, `--auto-lod=on`,
 `--fade=on` (see [docs/level-of-detail.md](docs/level-of-detail.md)),
 `--power=200`, `--at=1200` (start that far along the road),
 `--shot=out.png --frames=90` (save a screenshot and quit; used for checks).
@@ -90,6 +91,7 @@ isn't needed.
 |---|---|
 | `scripts/main.gd` | Picks and builds a world, status line, options, keys |
 | `scripts/common/` | Shared: `PowerLink` (UDP), `Rider` (physics, camera), `Route` (road from a rough loop, grade cap), `Roads` (road surface), `Look` (sky, fog, sun), `Lod` (level-of-detail manager), `Instancer` (chunked instances, LOD tiers), `TreeGen` (branching trees, conifers), `MeshBuilder`, `Meshes` (props), `MinHeap` |
+| `scripts/worlds/gallery/` | `GalleryWorld`: all tree models side by side |
 | `scripts/worlds/valley/` | `ValleyWorld`, `ValleyTerrain`, `ValleyScenery` |
 | `scripts/worlds/riverlands/` | `RiverWorld`, `RiverLand` (terrain, water, maps, biomes), `RiverRoad` (A*), `RiverCliffs` (strata skin, scree, ledges), `RiverEcology` (species, competition, age, understory), `RiverScenery` (order, ground cover, bridges, fences) |
 | `shaders/` | Shared toon lighting (`toon.gdshaderinc`), ground/props, foliage (cut-out leaves, crown normals, sway), `toon_lod` + `lod_fade.gdshaderinc` (per-instance tier dissolve), grass, water, sky |

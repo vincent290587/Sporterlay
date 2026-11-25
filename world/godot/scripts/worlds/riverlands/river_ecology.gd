@@ -369,11 +369,11 @@ func build_trees(parent: Node3D, mat: Material) -> void:
 			far = Meshes.birch_far(rng, BIRCH[0], BIRCH[1])
 		elif kind == "pine":
 			models = TreeGen.lods(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
-				return TreeGen.conifer(r, 12.6, 3.4, 7, Meshes.NEEDLE_DARK, Meshes.NEEDLE_LIGHT, lod))
-			far = Meshes.conifer_far(12.6, 3.4)
+				return TreeGen.branching(r, TreeGen.PINE, Meshes.NEEDLE_DARK, Meshes.NEEDLE_LIGHT, TreeGen.PINE_BARK, false, lod))
+			far = Meshes.broadleaf_far(rng, Meshes.NEEDLE_DARK, Meshes.NEEDLE_LIGHT)
 		elif kind == "spruce":
 			models = TreeGen.lods(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
-				return TreeGen.conifer(r, 16.0, 2.8, 10, Meshes.NEEDLE_DARK.darkened(0.1), Meshes.NEEDLE_LIGHT, lod))
+				return TreeGen.spruce(r, 16.0, 2.9, 9, Meshes.NEEDLE_DARK.darkened(0.1), Meshes.NEEDLE_LIGHT, lod))
 			far = Meshes.conifer_far(16.0, 2.7)
 		else:
 			n += inst.build_tiers(parent, [[TreeGen.dead(rng), null, 0.0, TREE_MID, true, TreeGen.materials(4), 150.0]], "trees")

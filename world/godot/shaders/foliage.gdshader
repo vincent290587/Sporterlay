@@ -2,6 +2,7 @@
 // light shades a crown as one soft volume. COLOR.a picks the cut-out:
 //   0    solid (cluster cores, conifer core)
 //   0.5  needle frond: a tapering strip with a jagged edge
+//   0.75 needle tuft: a spiky burst (pine)
 //   1    leaf clump: a scalloped disc
 // Crowns sway a little in the wind, more towards the top. Tiers dissolve into each
 // other per tree (lod_fade.gdshaderinc).
@@ -35,6 +36,15 @@ float clump(vec2 uv) {
 	return step(length(p), edge);
 }
 
+// a spiky burst of needles (pine tufts)
+float tuft(vec2 uv) {
+	vec2 p = uv * 2.0 - 1.0;
+	float a = atan(p.y, p.x);
+	float spikes = pow(abs(sin(a * 11.0)), 0.8);
+	float edge = 0.68 + 0.24 * spikes + 0.05 * sin(a * 23.0);
+	return step(length(p), edge);
+}
+
 float needles(vec2 uv) {
 	float across = abs(uv.x - 0.5) * 2.0;
 	float shape = smoothstep(0.0, 0.12, uv.y) * (1.0 - uv.y * 0.55);
@@ -46,8 +56,10 @@ void fragment() {
 	lod_dither(FRAGCOORD.xy);
 	float kind = COLOR.a;
 	float mask = 1.0;
-	if (kind > 0.75) {
+	if (kind > 0.875) {
 		mask = clump(UV);
+	} else if (kind > 0.6) {
+		mask = tuft(UV);
 	} else if (kind > 0.25) {
 		mask = needles(UV);
 	}

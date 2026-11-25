@@ -123,7 +123,7 @@ static func _trees(parent: Node3D, terrain: ValleyTerrain, rng: RandomNumberGene
 	var bl := TreeGen.lods(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
 		return TreeGen.branching(r, TreeGen.BROADLEAF, Meshes.LEAF_DARK, Meshes.LEAF_LIGHT, TreeGen.BARK, false, lod))
 	var cf := TreeGen.lods(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
-		return TreeGen.conifer(r, 12.6, 3.4, 7, Meshes.NEEDLE_DARK, Meshes.NEEDLE_LIGHT, lod))
+		return TreeGen.spruce(r, 13.0, 3.2, 8, Meshes.NEEDLE_DARK, Meshes.NEEDLE_LIGHT, lod))
 	var blob: ShaderMaterial = TreeGen.materials(3)[0]
 	var n := broad.build_tiers(parent, [[bl[0], null, 0.0, TREE_NEAR, true, TreeGen.materials(0), 100.0],
 		[bl[1], null, TREE_NEAR, TREE_MID, false, TreeGen.materials(1), 150.0], [bl[2], null, TREE_MID, TREE_FAR, false, TreeGen.materials(2), 300.0],

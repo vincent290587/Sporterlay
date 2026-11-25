@@ -370,11 +370,18 @@ the ground colour, the raised forest floor and the understory.
   toon light shades the whole crown as one volume; colours run from the palette's dark
   (inside, underneath) to light (outside, on top). Birch bark is white with random dark
   marks.
-- *Conifers*: a tapering trunk, a dark solid core cone, and 7 (pine) or 10 (spruce)
-  tiers of 6-8 drooping fronds cut out as jagged needle strips.
+- *Pine* (Scots-pine style): the same growth with a tall bare orange-brown trunk, level
+  limbs high up and flat clusters whose needle cards lie mostly level, cut out as spiky
+  tufts, so the crown reads as layered pads of needles.
+- *Spruce*: 9 stacked solid skirts, each a cone with a jagged drooping hem (every other
+  rim point sticks out and dips), a dark underside and, at full detail, a fringe of
+  needle cards on the hem points. Normals point out and up, so each tier has a lit top
+  and a shaded edge.
 - *Dead trees*: the broadleaf structure without leaves, grey bark.
 - Crowns sway with the wind, more towards the top, each tree in its own phase.
 - Three variants of each species and colour (24 models), picked at random per tree.
+- The `gallery` world (`--world=gallery --cam=x,y,z,tx,ty,tz`) lines up every model at
+  each level of detail on flat ground, for judging them side by side.
 
 **Levels of detail** (base distances, scaled by the LOD manager, see
 [level-of-detail.md](level-of-detail.md)): full models to 250 m; a lighter model grown
@@ -513,9 +520,9 @@ and prints the steepest 2 m step was used. It isn't kept in the repo.
   the map.
 - About 62k trees (each with a root mound), 280k understory props, 140k ferns and 550k
   grass clumps (seed 7, 7.4 km road). At 1080p on the dev box (RX 7900 XT), quality
-  high, auto off: 299 fps average, 197 fps 1 % low. With `--auto-lod=on --target-fps=60`
+  high, auto off: 270 fps average, 186 fps 1 % low. With `--auto-lod=on --target-fps=60`
   the manager spends the headroom on longer draw distances (~220 fps). Expected on the
-  ride PC (RTX 3060 Ti): about 100 fps at high; the manager holds 60 either way. Not
+  ride PC (RTX 3060 Ti): about 90 fps at high; the manager holds 60 either way. Not
   measured there yet.
 - The basin has many rivers, so the loop crosses water ~15 times, mostly small streams.
 
