@@ -101,57 +101,6 @@ func build(parent: Node3D) -> void:
 	var lit := ShaderMaterial.new()
 	lit.shader = load("res://shaders/window.gdshader")
 	_add(parent, glow.commit(), lit, false)
-	_bats(parent)
-
-
-## Bats circling the great tower and the keep (they fly in bat.gdshader).
-func _bats(parent: Node3D) -> void:
-	var b := MeshBuilder.new()
-	var col := Color.BLACK
-	var n := Vector3.UP
-	# body
-	var i := b.add(Vector3(0.0, 0.0, 0.25), n, col)
-	b.add(Vector3(0.08, 0.0, -0.2), n, col)
-	b.add(Vector3(-0.08, 0.0, -0.2), n, col)
-	b.tri_raw(i, i + 1, i + 2)
-	# wings: scalloped, three points along the trailing edge
-	for s: float in [-1.0, 1.0]:
-		var root_f := b.add(Vector3(s * 0.07, 0.0, 0.12), n, col)
-		var root_b := b.add(Vector3(s * 0.07, 0.0, -0.15), n, col)
-		var tip := b.add(Vector3(s * 0.75, 0.05, 0.05), n, col)
-		var mid := b.add(Vector3(s * 0.42, 0.0, -0.14), n, col)
-		var out := b.add(Vector3(s * 0.66, 0.02, -0.12), n, col)
-		b.tri_raw(root_f, tip, mid)
-		b.tri_raw(root_f, mid, root_b)
-		b.tri_raw(mid, tip, out)
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_custom_data = true
-	mm.mesh = b.commit()
-	var flocks := [[Vector3(-27.0, 0.0, -26.0), 26, 58.0], [Vector3(-27.0, 0.0, 4.0), 14, 44.0]]
-	var total := 0
-	for f: Array in flocks:
-		total += int(f[1])
-	mm.instance_count = total
-	var k := 0
-	for f: Array in flocks:
-		var c := _w(f[0]) - centre   # relative to the MultiMeshInstance at the centre
-		for _j in int(f[1]):
-			var r := _rng.randf_range(10.0, 38.0)
-			var speed := _rng.randf_range(4.5, 8.0) / r * (-1.0 if _rng.randf() < 0.3 else 1.0)
-			var sc := _rng.randf_range(0.9, 1.5)
-			mm.set_instance_transform(k, Transform3D(Basis().scaled(Vector3.ONE * sc), c))
-			mm.set_instance_custom_data(k, Color(r, speed, float(f[2]) + _rng.randf_range(-8.0, 12.0), _rng.randf() * TAU))
-			k += 1
-	var mi := MultiMeshInstance3D.new()
-	mi.multimesh = mm
-	var mat := ShaderMaterial.new()
-	mat.shader = load("res://shaders/bat.gdshader")
-	mi.material_override = mat
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mi.position = centre
-	mi.custom_aabb = AABB(Vector3(-110.0, 0.0, -110.0), Vector3(220.0, 110.0, 220.0))
-	parent.add_child(mi)
 
 
 func _add(parent: Node3D, mesh: Mesh, mat: Material, shadows: bool) -> void:

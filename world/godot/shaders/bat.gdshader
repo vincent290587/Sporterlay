@@ -2,9 +2,12 @@
 // its orbit's centre, and INSTANCE_CUSTOM = (radius, angular speed, height, phase).
 // The mesh is a body with two wings along x; the wings beat by lifting with |x|.
 shader_type spatial;
-render_mode unshaded, cull_disabled;
+render_mode cull_disabled;
 
-uniform vec3 color : source_color = vec3(0.015, 0.012, 0.018);
+#include "res://shaders/toon.gdshaderinc"
+
+// dark leathery brown: black against the sky, caught by the torches and the moon
+uniform vec3 color : source_color = vec3(0.10, 0.07, 0.065);
 
 void vertex() {
 	float r = INSTANCE_CUSTOM.x;
@@ -21,8 +24,11 @@ void vertex() {
 	float beat = sin(TIME * (13.0 + fract(ph * 7.3) * 5.0) + ph * 11.0);
 	v.y += beat * abs(v.x) * 0.75;
 	VERTEX = pos + side * v.x + up * v.y + fwd * v.z;
+	NORMAL = up;
 }
 
 void fragment() {
-	ALBEDO = color;
+	ALBEDO = srgb_to_linear(color);
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
 }

@@ -57,14 +57,17 @@ Properly dark, on purpose. `scripts/worlds/transylvania/`:
   along it): curtain wall with battlements, two gatehouses with a raised portcullis,
   round towers with red spires, a gabled keep with corner turrets, a great tower that
   stands in front of the moon on the climb, stables, a well. Lit windows
-  (`window.gdshader`) flicker warm, a few blood red. Bats circle the towers, flown
-  entirely in `bat.gdshader`. The ground is levelled under it (`level()`), and the
+  (`window.gdshader`) flicker warm, a few blood red. The ground is levelled under it (`level()`), and the
   walls go 40 m down so nothing floats on the cliffs.
 - **`TransTorches`**: torch pairs up the climb (16 m apart near the gates, 46 m low
   down), wall torches at the gates, braziers in the courtyard, and a troiță (roofed
   wayside cross) with a candle lantern every ~500 m. Flames are instanced quads
   (`flame.gdshader`); a pool of 18 omni lights follows the nearest fires, fading by
   distance, the nearest 4 with shadows.
+- **`TransBats`**: big flocks round the great tower and the keep, and small groups
+  low over the road all round the loop, closer together and bigger near the castle.
+  One MultiMesh flown entirely in `bat.gdshader` (orbit and wingbeat from per-instance
+  custom data); they're lit, so the torches catch them.
 - **`TransScenery`**: spruce, late-autumn beech, dead and twisted trees (more near the
   castle and in the hollows), rocks, ferns, black pools. The mist is a FogVolume
   (`mist.gdshader`) below `TransLand.MIST` over a thin volumetric haze; the height fog
