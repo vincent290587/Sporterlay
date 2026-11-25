@@ -16,11 +16,15 @@ var landmarks := EndlessLandmarks.new()
 
 func build(parent: Node3D, seed: int) -> void:
 	land.setup(seed)
-	route.setup(seed, land.base_height)
+	route.setup(seed, land.base_height, land.climbs.height_at, land.climbs.on_climb)
 	var plan := []
 	for k in range(1, 7):
 		plan.append("%s at %.1f km" % [EndlessBiomes.NAMES[land.biomes.kinds[k]], land.biomes.starts[k] / 1000.0])
 	print("  ahead: valley, then ", ", ".join(plan))
+	var cols := []
+	for c: Array in land.climbs.summits(0, 60000.0):
+		cols.append("%.1f km (+%d m over %.1f km)" % [float(c[1]) / 1000.0, int(c[2]), float(c[3]) / 1000.0])
+	print("  cols at: ", ", ".join(cols))
 	sky.name = "Sky"
 	sky.biomes = land.biomes
 	parent.add_child(sky)

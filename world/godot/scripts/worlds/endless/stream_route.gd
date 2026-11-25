@@ -11,12 +11,14 @@ extends Route
 ##
 ## Only a window of points is kept: `points[0]` is global index `base`.
 
-const MAX_GRADE_E := 0.06
+const MAX_GRADE_E := 0.09
 const GRADE_RATE := 0.0012     # grade change per metre (0 to 6 % in 50 m)
-const LOOK := [30.0, 70.0, 120.0]
+const LOOK := [60.0, 150.0, 280.0, 420.0]
 
 var base := 0
 var base_height: Callable     # (x, z) -> m, the land the road follows
+var climb: Callable           # (s) -> m, the cols (EndlessClimbs) on top of it
+var on_climb: Callable        # (s) -> 0..1, how much the land is flattened for a col
 var _wander := FastNoiseLite.new()
 var _bend := FastNoiseLite.new()
 var _wiggle := FastNoiseLite.new()
@@ -27,8 +29,10 @@ var _h := 0.0
 var _g := 0.0
 
 
-func setup(seed: int, height: Callable) -> void:
+func setup(seed: int, height: Callable, climb_at: Callable, on_climb_at: Callable) -> void:
 	base_height = height
+	climb = climb_at
+	on_climb = on_climb_at
 	length = 1e12
 	spacing = SPACING
 	_wander.seed = seed + 31
@@ -57,9 +61,11 @@ func ensure(s: float) -> void:
 			var target := 0.0
 			var a2 := heading_at(sd)
 			for d: float in LOOK:
-				target += base_height.call(_x + cos(a2) * d, _z + sin(a2) * d)
+				target += base_height.call(_x + cos(a2) * d, _z + sin(a2) * d) * (1.0 - 0.8 * on_climb.call(sd + d)) + climb.call(sd + d)
 			target /= LOOK.size()
-			var want_g := clampf((target - _h) / 140.0, -MAX_GRADE_E, MAX_GRADE_E)
+			# the land's bumps only gently (they cap at 6 %), the cols fully
+			var cap := MAX_GRADE_E if climb.call(sd + 70.0) > 1.0 else 0.06
+			var want_g := clampf((target - _h) / 260.0, -cap, cap)
 			_g += clampf(want_g - _g, -GRADE_RATE * spacing, GRADE_RATE * spacing)
 			_h += _g * spacing
 		points.append(Vector3(_x, _h, _z))

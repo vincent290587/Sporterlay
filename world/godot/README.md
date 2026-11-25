@@ -127,8 +127,13 @@ around the rider is generated as they ride and dropped behind them. The same
 
 - **`StreamRoute`** (extends `Route`): the road, integrated from s = 0 in 2 m steps.
   Heading: a slow wander of at most ~70 deg round one direction plus bends (it can
-  never cross itself). Height: follows the land ahead, grade eased in and capped at
-  6 %. Only ~6 km either side of the rider is kept (`ensure`, `trim`).
+  never cross itself). Height: follows the land and the cols ahead (looking 60-420 m
+  on), grade eased in, capped at 6 % on the flat and 9 % on a col. Only ~6 km either side of the rider is kept (`ensure`, `trim`).
+- **`EndlessClimbs`**: a col every 5-15 km: 150-450 m over 3-7 km (eased profile,
+  ~5-6.5 % on the long middle, capped at 9 %), a short summit, a descent. The road
+  follows it and the land rises with it, less away from the road (a shoulder with
+  the valley below); the land's own bumps are flattened on a col so the grade is
+  clean. Seed 7: cols at 8.3, 28.5 and 46.4 km.
 - **`EndlessBiomes`**: the road in 6-10 km stretches (seeded order, starting in the
   valley), blended over 1.2 km: relief and ground colours per biome. Tiles blend
   them per vertex by the road distance of the nearest road point.
