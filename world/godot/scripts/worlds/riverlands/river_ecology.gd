@@ -21,9 +21,10 @@ extends RefCounted
 ##               mossy rocks around the conifers; and every trunk stands on a small
 ##               mound of soil its roots lifted.
 
-const TREE_CHUNK := 200.0
+const TREE_CHUNK := 100.0          # trees pick their own tier, so chunks only need to be roughly in range
 const TREE_NEAR := 250.0            # full TreeGen models out to here
-const TREE_MID := 600.0             # lighter TreeGen models (no shadows) out to here, blobs beyond
+const TREE_MID := 600.0             # lighter TreeGen models (no shadows) out to here
+const TREE_FAR := 1300.0            # far TreeGen crowns (no leaf cards) out to here, blobs beyond
 const TREE_VISIBLE := 2200.0
 const SMALL_CHUNK := 64.0
 const SMALL_VISIBLE := 350.0
@@ -359,29 +360,31 @@ func build_trees(parent: Node3D, mat: Material) -> void:
 		var far: Mesh
 		if kind.begins_with("broad"):
 			var pal: Array = palettes[int(kind.substr(5))]
-			models = TreeGen.pair(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
+			models = TreeGen.lods(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
 				return TreeGen.branching(r, TreeGen.BROADLEAF, pal[0], pal[1], TreeGen.BARK, false, lod))
 			far = Meshes.broadleaf_far(rng, pal[0], pal[1])
 		elif kind == "birch":
-			models = TreeGen.pair(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
+			models = TreeGen.lods(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
 				return TreeGen.birch(r, BIRCH[0], BIRCH[1], lod))
 			far = Meshes.birch_far(rng, BIRCH[0], BIRCH[1])
 		elif kind == "pine":
-			models = TreeGen.pair(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
+			models = TreeGen.lods(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
 				return TreeGen.conifer(r, 12.6, 3.4, 7, Meshes.NEEDLE_DARK, Meshes.NEEDLE_LIGHT, lod))
 			far = Meshes.conifer_far(12.6, 3.4)
 		elif kind == "spruce":
-			models = TreeGen.pair(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
+			models = TreeGen.lods(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
 				return TreeGen.conifer(r, 16.0, 2.8, 10, Meshes.NEEDLE_DARK.darkened(0.1), Meshes.NEEDLE_LIGHT, lod))
 			far = Meshes.conifer_far(16.0, 2.7)
 		else:
-			n += inst.build(parent, TreeGen.dead(rng), null, TREE_MID, true)
+			n += inst.build_tiers(parent, [[TreeGen.dead(rng), null, 0.0, TREE_MID, true, TreeGen.materials(4), 150.0]], "trees")
 			continue
+		var blob: ShaderMaterial = TreeGen.materials(3)[0]
 		n += inst.build_tiers(parent, [
-			[models[0], null, 0.0, TREE_NEAR, true],
-			[models[1], null, TREE_NEAR, TREE_MID, false],
-			[far, mat, TREE_MID, TREE_VISIBLE, false]])
-	var nm := mounds.build(parent, Meshes.mound(), mat, MOUND_VISIBLE, false)
+			[models[0], null, 0.0, TREE_NEAR, true, TreeGen.materials(0), 100.0],
+			[models[1], null, TREE_NEAR, TREE_MID, false, TreeGen.materials(1), 150.0],
+			[models[2], null, TREE_MID, TREE_FAR, false, TreeGen.materials(2), 300.0],
+			[far, blob, TREE_FAR, TREE_VISIBLE, false, [blob], 500.0]], "trees")
+	var nm := mounds.build(parent, Meshes.mound(), mat, MOUND_VISIBLE, false, 0.0, "mounds")
 	print("  trees: %d (%d models), root mounds: %d" % [n, sets.size(), nm])
 
 
@@ -491,11 +494,11 @@ func build_understory(parent: Node3D, mat: Material, grass_mat: Material, ledges
 		bushes.put(p - Vector3(0.0, 0.1, 0.0), rng.randf() * TAU, s, s, tint)
 		ledge_plants += 1
 
-	var n := bushes.build(parent, Meshes.bush(rng), mat, SMALL_VISIBLE, true)
-	n += rocks.build(parent, Meshes.rock(rng), mat, SMALL_VISIBLE, true)
-	n += crumbled.build(parent, Meshes.rock(rng), mat, SMALL_VISIBLE, true)
-	n += logs.build(parent, Meshes.fallen_log(rng), mat, SMALL_VISIBLE, true)
-	n += stumps.build(parent, Meshes.stump(rng), mat, SMALL_VISIBLE, true)
-	n += boulders.build(parent, Meshes.rock(rng), mat, TREE_VISIBLE, true)
-	var nf := ferns.build(parent, Meshes.fern(rng), grass_mat, FERN_VISIBLE, false)
+	var n := bushes.build(parent, Meshes.bush(rng), mat, SMALL_VISIBLE, true, 0.0, "bushes")
+	n += rocks.build(parent, Meshes.rock(rng), mat, SMALL_VISIBLE, true, 0.0, "props")
+	n += crumbled.build(parent, Meshes.rock(rng), mat, SMALL_VISIBLE, true, 0.0, "props")
+	n += logs.build(parent, Meshes.fallen_log(rng), mat, SMALL_VISIBLE, true, 0.0, "props")
+	n += stumps.build(parent, Meshes.stump(rng), mat, SMALL_VISIBLE, true, 0.0, "props")
+	n += boulders.build(parent, Meshes.rock(rng), mat, TREE_VISIBLE, true, 0.0, "boulders")
+	var nf := ferns.build(parent, Meshes.fern(rng), grass_mat, FERN_VISIBLE, false, 0.0, "ferns")
 	print("  understory: %d props, %d ferns, %d on ledges, in %d ms" % [n, nf, ledge_plants, Time.get_ticks_msec() - t])

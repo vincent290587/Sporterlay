@@ -376,10 +376,13 @@ the ground colour, the raised forest floor and the understory.
 - Crowns sway with the wind, more towards the top, each tree in its own phase.
 - Three variants of each species and colour (24 models), picked at random per tree.
 
-**Levels of detail**: full models to 250 m; from 250 to 600 m a lighter model grown
-from the same random state (`TreeGen.pair()`, so the branches match): tip clusters only,
-4 cards each, no thin limbs, no shadows; beyond, the old one-blob/one-cone trees to
-2.2 km. Shadows reach 400 m. Root mounds to 250 m.
+**Levels of detail** (base distances, scaled by the LOD manager, see
+[level-of-detail.md](level-of-detail.md)): full models to 250 m; a lighter model grown
+from the same random state (`TreeGen.lods()`, so the branches match) to 600 m: tip
+clusters only, 4 cards each, no thin limbs, no shadows; a far crown (every other tip,
+big clusters, no cards) to 1300 m; the old one-blob/one-cone trees to 2.2 km. Each tree
+picks its tier itself and dissolves between them. Shadows reach 400 m. Root mounds to
+250 m.
 
 **Root mounds**: every tree away from the road stands on a low mound (2.4 m × tree size
 across, 0.45 m high, rim just under the ground) in the ground's colour at that spot, drawn
@@ -509,11 +512,11 @@ and prints the steepest 2 m step was used. It isn't kept in the repo.
 - Some seeds may still give an odd road (a long detour, a crossing over itself). Check
   the map.
 - About 62k trees (each with a root mound), 280k understory props, 140k ferns and 550k
-  grass clumps (seed 7, 7.4 km road). At 1080p on the dev box (RX 7900 XT): 333 fps
-  average, 245 fps 1 % low, 0.73 GB video memory, 0.64 GB RAM, 18 M triangles a frame.
-  Expected on the ride PC (RTX 3060 Ti): roughly 110 fps. Not measured there yet.
-- Distant woods (beyond 600 m) are still one-blob trees, which look plain next to the
-  new models.
+  grass clumps (seed 7, 7.4 km road). At 1080p on the dev box (RX 7900 XT), quality
+  high, auto off: 299 fps average, 197 fps 1 % low. With `--auto-lod=on --target-fps=60`
+  the manager spends the headroom on longer draw distances (~220 fps). Expected on the
+  ride PC (RTX 3060 Ti): about 100 fps at high; the manager holds 60 either way. Not
+  measured there yet.
 - The basin has many rivers, so the loop crosses water ~15 times, mostly small streams.
 
 ## References

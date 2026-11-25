@@ -64,12 +64,13 @@ Sporterlay ──UDP 127.0.0.1:47810, 4 Hz──▶ PowerLink ──▶ Rider (o
    `Godot_v4.7.2-stable_win64.exe --path world/godot`
 3. In Sporterlay: tray → Extras → *Send power to the virtual world*.
 
-Keys: **Esc** quit, **H** hide the status line, **F3** frame rate, **F2** next world, **F11** fullscreen/windowed,
+Keys: **Esc** quit, **H** hide the status line, **F3** frame rate, **F4** detail levels, **F2** next world, **F11** fullscreen/windowed,
 **Up/Down** manual power while Sporterlay isn't sending.
 
 Options (after `--` when launching the editor binary, directly on an exported exe):
 `--port=47810` (must match Sporterlay's `world_port`), `--world=riverlands`,
-`--seed=7` (another variant), `--map=out.png`, `--bench=60` (ride 60 s with vsync off and print the frame rate and memory use), `--size=1920x1080` (window size),
+`--seed=7` (another variant), `--map=out.png`, `--bench=60` (ride 60 s with vsync off and print the frame rate and memory use), `--size=1920x1080` (window size), `--quality=high`, `--target-fps=60`, `--auto-lod=on`,
+`--fade=on` (see [docs/level-of-detail.md](docs/level-of-detail.md)),
 `--power=200`, `--at=1200` (start that far along the road),
 `--shot=out.png --frames=90` (save a screenshot and quit; used for checks).
 
@@ -88,10 +89,10 @@ isn't needed.
 | Path | What |
 |---|---|
 | `scripts/main.gd` | Picks and builds a world, status line, options, keys |
-| `scripts/common/` | Shared: `PowerLink` (UDP), `Rider` (physics, camera), `Route` (road from a rough loop, grade cap), `Roads` (road surface), `Look` (sky, fog, sun), `Instancer` (chunked instances, LOD tiers), `TreeGen` (branching trees, conifers), `MeshBuilder`, `Meshes` (props), `MinHeap` |
+| `scripts/common/` | Shared: `PowerLink` (UDP), `Rider` (physics, camera), `Route` (road from a rough loop, grade cap), `Roads` (road surface), `Look` (sky, fog, sun), `Lod` (level-of-detail manager), `Instancer` (chunked instances, LOD tiers), `TreeGen` (branching trees, conifers), `MeshBuilder`, `Meshes` (props), `MinHeap` |
 | `scripts/worlds/valley/` | `ValleyWorld`, `ValleyTerrain`, `ValleyScenery` |
 | `scripts/worlds/riverlands/` | `RiverWorld`, `RiverLand` (terrain, water, maps, biomes), `RiverRoad` (A*), `RiverCliffs` (strata skin, scree, ledges), `RiverEcology` (species, competition, age, understory), `RiverScenery` (order, ground cover, bridges, fences) |
-| `shaders/` | Shared toon lighting (`toon.gdshaderinc`), ground/props, foliage (cut-out leaves, crown normals, sway), grass, water, sky |
+| `shaders/` | Shared toon lighting (`toon.gdshaderinc`), ground/props, foliage (cut-out leaves, crown normals, sway), `toon_lod` + `lod_fade.gdshaderinc` (per-instance tier dissolve), grass, water, sky |
 
 A new world is a class with `route` and `build(parent, seed)`, registered in
 `main.gd`'s `worlds`.

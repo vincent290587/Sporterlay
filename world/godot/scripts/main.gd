@@ -11,7 +11,11 @@ extends Node3D
 ##   --map=path.png  save a top-down biome map (worlds that have one)
 ##   --bench=60     ride for that many seconds with vsync off, print the frame rate, quit
 ##   --size=1920x1080  open in a window of that size
-## Keys: Esc quit, H hide the text, F3 frame rate, F11 fullscreen, F2 next world,
+##   --quality=high low|medium|high|ultra: starting draw distances (see Lod)
+##   --target-fps=60  frame rate the LOD manager keeps while riding
+##   --auto-lod=on  let it adjust draw distances to the budget (off by default in --bench)
+##   --fade=on      cross-fade between detail levels
+## Keys: Esc quit, H hide the text, F3 frame rate, F4 detail levels, F11 fullscreen, F2 next world,
 ## Up/Down manual power without Sporterlay.
 
 var worlds := {"valley": ValleyWorld, "riverlands": RiverWorld}
@@ -25,6 +29,8 @@ var hud := Label.new()
 var manual_power := 0.0
 var args := {}
 var show_fps := false
+var show_lod := false
+var lod := Lod.new()
 var _bench := 0.0
 var _bench_frames := PackedFloat32Array()
 var _bench_skip := 2.0   # seconds to settle (shader compiles) before measuring
@@ -53,6 +59,11 @@ func _ready() -> void:
 		if manual_power <= 0.0:
 			manual_power = 220.0
 
+	lod.quality = str(args.get("quality", "high"))
+	lod.target_fps = float(args.get("target-fps", "60"))
+	lod.fade = str(args.get("fade", "on")) == "on"
+	lod.auto = str(args.get("auto-lod", "off" if _bench > 0.0 else "on")) == "on"
+	add_child(lod)
 	link.port = int(args.get("port", "47810"))
 	add_child(link)
 	add_child(rider)
@@ -77,6 +88,8 @@ func _ready() -> void:
 func _load_world(at: float) -> void:
 	if world_node:
 		world_node.free()
+	lod.clear()
+	TreeGen.reset()
 	world_node = Node3D.new()
 	world_node.name = "World"
 	add_child(world_node)
@@ -99,6 +112,8 @@ func _process(delta: float) -> void:
 	rider.advance(watts, delta)
 	var src := "Sporterlay" if link.connected else (link.error if link.error != "" else "manual (Up/Down) - waiting for Sporterlay")
 	var fps := "   %d fps" % Engine.get_frames_per_second() if show_fps else ""
+	if show_lod:
+		fps += "\n" + lod.summary()
 	hud.text = "%s   %d W   %.1f km/h   %+.1f %%   %.2f km   [%s]" % [world_name.capitalize(), watts, rider.speed * 3.6, rider.grade, rider.odometer / 1000.0, src] + fps
 
 	if _bench > 0.0:
@@ -140,6 +155,7 @@ func _report_bench() -> void:
 		Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
 		Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
 		Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME) / 1e6])
+	print("  detail (%s, auto %s): %s" % [lod.quality, "on" if lod.auto else "off", lod.summary()])
 	get_tree().quit()
 
 
@@ -154,6 +170,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			hud.visible = not hud.visible
 		KEY_F3:
 			show_fps = not show_fps
+		KEY_F4:
+			show_lod = not show_lod
+			hud.offset_top = -80 if show_lod else -48
 		KEY_F2:
 			var names := worlds.keys()
 			world_name = names[(names.find(world_name) + 1) % names.size()]

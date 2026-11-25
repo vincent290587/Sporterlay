@@ -3,17 +3,23 @@
 //   0    solid (cluster cores, conifer core)
 //   0.5  needle frond: a tapering strip with a jagged edge
 //   1    leaf clump: a scalloped disc
-// Crowns sway a little in the wind, more towards the top.
+// Crowns sway a little in the wind, more towards the top. Tiers dissolve into each
+// other per tree (lod_fade.gdshaderinc).
 shader_type spatial;
 render_mode cull_disabled;
 
 #include "res://shaders/toon.gdshaderinc"
+#include "res://shaders/lod_fade.gdshaderinc"
 
 uniform float sway = 0.06;
 
 varying vec3 wpos;
 
 void vertex() {
+	lod_d = lod_distance(MODEL_MATRIX, CAMERA_POSITION_WORLD);
+	if (!lod_keep_vertex(lod_d)) {
+		VERTEX = vec3(0.0);
+	}
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vec3 origin = MODEL_MATRIX[3].xyz;
 	float above = max(VERTEX.y - 2.5, 0.0);
@@ -37,6 +43,7 @@ float needles(vec2 uv) {
 }
 
 void fragment() {
+	lod_dither(FRAGCOORD.xy);
 	float kind = COLOR.a;
 	float mask = 1.0;
 	if (kind > 0.75) {

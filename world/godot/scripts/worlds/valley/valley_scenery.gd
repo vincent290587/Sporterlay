@@ -13,10 +13,13 @@ const GRASS_VISIBLE := 210.0
 const TREE_CHUNK := 200.0
 const TREE_VISIBLE := 1500.0
 const TREE_NEAR := 250.0         # full TreeGen models out to here
-const TREE_MID := 700.0          # lighter ones out to here, blobs beyond
+const TREE_MID := 600.0          # lighter ones out to here
+const TREE_FAR := 1100.0         # far crowns out to here, blobs beyond
 
 
 static func build(parent: Node3D, terrain: ValleyTerrain, route: Route, seed: int) -> void:
+	for c in [["trees", 1.0], ["grass", 0.9], ["boulders", 0.4]]:
+		Lod.category(c[0], c[1])
 	var toon := ShaderMaterial.new()
 	toon.shader = TOON
 	_mesh(parent, terrain.build_mesh(), toon, true)
@@ -78,7 +81,9 @@ static func _grass(parent: Node3D, terrain: ValleyTerrain, route: Route, rng: Ra
 	var mat := ShaderMaterial.new()
 	mat.shader = GRASS
 	var mesh := Meshes.grass_clump(rng)
-	print("grass clumps: ", grass.build(parent, mesh, mat, GRASS_VISIBLE, false))
+	print("grass clumps: ", grass.build(parent, mesh, mat, GRASS_VISIBLE, false, 0.0, "grass"))
+	Lod.add_param("grass", mat, "fade_start", 130.0)
+	Lod.add_param("grass", mat, "fade_end", 190.0)
 
 
 ## Trees in clustered woods, with a few loners in the meadows.
@@ -87,8 +92,8 @@ static func _trees(parent: Node3D, terrain: ValleyTerrain, rng: RandomNumberGene
 	forest.seed = rng.randi()
 	forest.frequency = 0.0035
 	forest.fractal_octaves = 3
-	var broad := Instancer.new(TREE_CHUNK)
-	var pine := Instancer.new(TREE_CHUNK)
+	var broad := Instancer.new(100.0)   # trees pick their own tier: small chunks waste little
+	var pine := Instancer.new(100.0)
 	var cell := 8.0
 	var x := -ValleyTerrain.HALF
 	while x < ValleyTerrain.HALF:
@@ -115,14 +120,17 @@ static func _trees(parent: Node3D, terrain: ValleyTerrain, rng: RandomNumberGene
 			else:
 				broad.put(pos, rng.randf() * TAU, s, s * rng.randf_range(0.85, 1.1), tint)
 		x += cell
-	var bl := TreeGen.pair(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
+	var bl := TreeGen.lods(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
 		return TreeGen.branching(r, TreeGen.BROADLEAF, Meshes.LEAF_DARK, Meshes.LEAF_LIGHT, TreeGen.BARK, false, lod))
-	var cf := TreeGen.pair(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
+	var cf := TreeGen.lods(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
 		return TreeGen.conifer(r, 12.6, 3.4, 7, Meshes.NEEDLE_DARK, Meshes.NEEDLE_LIGHT, lod))
-	var n := broad.build_tiers(parent, [[bl[0], null, 0.0, TREE_NEAR, true], [bl[1], null, TREE_NEAR, TREE_MID, false],
-		[Meshes.broadleaf_far(rng), mat, TREE_MID, TREE_VISIBLE, false]])
-	n += pine.build_tiers(parent, [[cf[0], null, 0.0, TREE_NEAR, true], [cf[1], null, TREE_NEAR, TREE_MID, false],
-		[Meshes.conifer_far(12.6, 3.4), mat, TREE_MID, TREE_VISIBLE, false]])
+	var blob: ShaderMaterial = TreeGen.materials(3)[0]
+	var n := broad.build_tiers(parent, [[bl[0], null, 0.0, TREE_NEAR, true, TreeGen.materials(0), 100.0],
+		[bl[1], null, TREE_NEAR, TREE_MID, false, TreeGen.materials(1), 150.0], [bl[2], null, TREE_MID, TREE_FAR, false, TreeGen.materials(2), 300.0],
+		[Meshes.broadleaf_far(rng), blob, TREE_FAR, TREE_VISIBLE, false, [blob], 500.0]], "trees")
+	n += pine.build_tiers(parent, [[cf[0], null, 0.0, TREE_NEAR, true, TreeGen.materials(0), 100.0],
+		[cf[1], null, TREE_NEAR, TREE_MID, false, TreeGen.materials(1), 150.0], [cf[2], null, TREE_MID, TREE_FAR, false, TreeGen.materials(2), 300.0],
+		[Meshes.conifer_far(12.6, 3.4), blob, TREE_FAR, TREE_VISIBLE, false, [blob], 500.0]], "trees")
 	print("trees: ", n)
 
 
@@ -140,4 +148,4 @@ static func _rocks(parent: Node3D, terrain: ValleyTerrain, rng: RandomNumberGene
 		var s := rng.randf_range(2.5, 7.0) if big else rng.randf_range(0.4, 1.6)
 		rocks.put(Vector3(px, h - s * 0.15, pz), rng.randf() * TAU, s, s * rng.randf_range(0.7, 1.1),
 			Color(1, 1, 1).darkened(rng.randf() * 0.2))
-	print("rocks: ", rocks.build(parent, Meshes.rock(rng), mat, TREE_VISIBLE, true))
+	print("rocks: ", rocks.build(parent, Meshes.rock(rng), mat, TREE_VISIBLE, true, 0.0, "boulders"))

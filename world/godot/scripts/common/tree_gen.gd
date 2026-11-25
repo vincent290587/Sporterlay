@@ -29,21 +29,29 @@ const BIRCH := {
 	"length": 2.0, "decay": 0.74, "up": 0.6, "taper": 0.6, "cluster": 1.35, "cards": 10,
 }
 
-static var _bark_mat: ShaderMaterial
-static var _leaf_mat: ShaderMaterial
+## Materials per detail tier ([bark, leaves]): each tier needs its own, because the LOD
+## manager sets the tier's fade distances on them. Tiers: 0 full, 1 light, 2 far crown,
+## 3 blob (bark material only), 4 dead trees.
+static var _mats := {}
 
 
-static func materials() -> Array:
-	if _bark_mat == null:
-		_bark_mat = ShaderMaterial.new()
-		_bark_mat.shader = load("res://shaders/toon_vcol.gdshader")
-		_leaf_mat = ShaderMaterial.new()
-		_leaf_mat.shader = load("res://shaders/foliage.gdshader")
-	return [_bark_mat, _leaf_mat]
+static func materials(tier: int) -> Array:
+	if not _mats.has(tier):
+		var bark := ShaderMaterial.new()
+		bark.shader = load("res://shaders/toon_lod.gdshader")
+		var leaf := ShaderMaterial.new()
+		leaf.shader = load("res://shaders/foliage.gdshader")
+		_mats[tier] = [bark, leaf]
+	return _mats[tier]
 
 
-static func _commit(bark: MeshBuilder, leaves: MeshBuilder) -> ArrayMesh:
-	var mats := materials()
+## Forget the materials (a new world registers fresh ones with the LOD manager).
+static func reset() -> void:
+	_mats.clear()
+
+
+static func _commit(bark: MeshBuilder, leaves: MeshBuilder, tier: int) -> ArrayMesh:
+	var mats := materials(tier)
 	var mesh := ArrayMesh.new()
 	for pair in [[bark, mats[0]], [leaves, mats[1]]]:
 		var b: MeshBuilder = pair[0]
@@ -78,14 +86,19 @@ static func branching(rng: RandomNumberGenerator, p: Dictionary, dark: Color, li
 			if rng.randf() < 0.22:
 				bark.colors[i] = BIRCH_BARK.darkened(0.75)
 	if leafless:
-		return _commit(bark, leaves)
+		return _commit(bark, leaves, 4)
 	# full detail: clusters at the tips and along the outer limbs; lighter: tips only,
 	# a bit bigger, with fewer cards and a coarser core
-	var spots: Array[Vector3] = tips.duplicate()
+	var spots: Array[Vector3] = []
+	if lod < 2:
+		spots = tips.duplicate()
+	else:
+		for i in range(0, tips.size(), 2):   # far: every other tip, bigger clusters
+			spots.append(tips[i])
 	if lod == 0:
 		spots.append_array(mids)
-	var grow := 1.0 if lod == 0 else 1.25
-	var cards: int = p.cards if lod == 0 else 4
+	var grow: float = [1.0, 1.25, 1.55][lod]
+	var cards: int = [int(p.cards), 4, 0][lod]
 	var crown := Vector3.ZERO
 	for t in spots:
 		crown += t
@@ -99,7 +112,7 @@ static func branching(rng: RandomNumberGenerator, p: Dictionary, dark: Color, li
 		var outer := clampf(t.distance_to(crown) / crown_r + (t.y - crown.y) / crown_r * 0.5, 0.0, 1.0)
 		var r: float = p.cluster * rng.randf_range(0.8, 1.15) * lerpf(0.7, 1.05, outer) * grow
 		_cluster(leaves, rng, t + Vector3(0.0, r * 0.25, 0.0), r, crown, crown_r, dark, light, cards, lod)
-	return _commit(bark, leaves)
+	return _commit(bark, leaves, lod)
 
 
 ## One limb in two bending segments, then its children.
@@ -116,7 +129,7 @@ static func _grow(bark: MeshBuilder, tips: Array[Vector3], mids: Array[Vector3],
 	var end := mid + end_dir * length * 0.5
 	var r_end := radius * taper
 	var segs := 6 if depth >= 2 else 4
-	if lod == 0 or depth >= 2:   # far away the thin limbs are hidden in the crown anyway
+	if lod == 0 or depth >= 2 + int(lod >= 2):   # far away the thin limbs are hidden in the crown anyway
 		Meshes.limb(bark, start, mid, radius, (radius + r_end) * 0.5, segs if lod == 0 else 4, col)
 		Meshes.limb(bark, mid, end, (radius + r_end) * 0.5, r_end, segs if lod == 0 else 4, col)
 	if depth <= 1:
@@ -158,7 +171,7 @@ static func _cluster(b: MeshBuilder, rng: RandomNumberGenerator, c: Vector3, r: 
 		crown_r: float, dark: Color, light: Color, cards: int, lod := 0) -> void:
 	# core
 	var rings := 4 if lod == 0 else 3
-	var segs := 6 if lod == 0 else 5
+	var segs: int = [6, 5, 5][lod]
 	var core_r := r * 0.72
 	var first := b.verts.size()
 	var bottom := _leaf_vert(b, c - Vector3(0.0, core_r, 0.0), Vector3.DOWN, crown, crown_r, dark, light, SOLID, Vector2(0.5, 0.5))
@@ -230,7 +243,9 @@ static func conifer(rng: RandomNumberGenerator, height: float, radius: float, ti
 		var f := float(t) / (tiers - 1)
 		var y := lerpf(1.9, height * 0.93, f)
 		var reach := (radius * pow(1.0 - f * 0.92, 0.9) + 0.35) * rng.randf_range(0.9, 1.1)
-		var fronds := (8 if t < tiers - 2 else 6) if lod == 0 else 5
+		if lod >= 2 and t % 2 == 1:
+			continue   # far: every other tier
+		var fronds := (8 if t < tiers - 2 else 6) if lod == 0 else (5 if lod == 1 else 4)
 		var spin := rng.randf() * TAU
 		for k in fronds:
 			var a := spin + TAU * k / fronds + rng.randf_range(-0.2, 0.2)
@@ -251,7 +266,7 @@ static func conifer(rng: RandomNumberGenerator, height: float, radius: float, ti
 			for q in 2:
 				leaves.tri_raw(row[q][0], row[q][1], row[q + 1][1])
 				leaves.tri_raw(row[q][0], row[q + 1][1], row[q + 1][0])
-	return _commit(bark, leaves)
+	return _commit(bark, leaves, lod)
 
 
 ## A birch: slender, white bark with dark marks, small clusters on upright branches.
@@ -259,16 +274,19 @@ static func birch(rng: RandomNumberGenerator, dark: Color, light: Color, lod := 
 	return branching(rng, BIRCH, dark, light, BIRCH_BARK, false, lod)
 
 
-## The same tree at full detail and lighter: [near, mid], grown from one random state so
-## both have the same branches.
-static func pair(rng: RandomNumberGenerator, make: Callable) -> Array:
+## The same tree at three levels of detail [full, light, far], grown from one random
+## state so all have the same branches.
+static func lods(rng: RandomNumberGenerator, make: Callable) -> Array:
 	var state := rng.state
-	var near: ArrayMesh = make.call(rng, 0)
-	var after := rng.state
-	rng.state = state
-	var mid: ArrayMesh = make.call(rng, 1)
+	var out := []
+	var after := state
+	for lod in 3:
+		rng.state = state
+		out.append(make.call(rng, lod))
+		if lod == 0:
+			after = rng.state
 	rng.state = after
-	return [near, mid]
+	return out
 
 
 static func dead(rng: RandomNumberGenerator) -> ArrayMesh:

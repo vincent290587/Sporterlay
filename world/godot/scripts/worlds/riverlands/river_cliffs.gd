@@ -179,22 +179,31 @@ func build_skin_tiles(parent: Node3D, mat: Material) -> void:
 		var b: MeshBuilder = near[key]
 		var skin := b.faceted()
 		_find_ledges(skin)
-		count += _tile(parent, skin.commit(), mat, 0.0, SKIN_NEAR, true)
+		count += _tile(parent, skin, mat, 0.0, SKIN_NEAR, true)
 		if far.has(key):
-			_tile(parent, (far[key] as MeshBuilder).faceted().commit(), mat, SKIN_NEAR, SKIN_FAR, true)
+			_tile(parent, (far[key] as MeshBuilder).faceted(), mat, SKIN_NEAR, SKIN_FAR, true)
 	print("  cliff tiles: %d" % count)
 
 
-func _tile(parent: Node3D, mesh: ArrayMesh, mat: Material, from: float, to: float, shadows: bool) -> int:
-	var aabb := mesh.get_aabb()
+## One tile as its own node, its vertices relative to the tile's centre (distances for
+## visibility and the LOD manager are measured from the node).
+func _tile(parent: Node3D, b: MeshBuilder, mat: Material, from: float, to: float, shadows: bool) -> int:
+	if b.verts.is_empty():
+		return 0
+	var center := Vector3.ZERO
+	for v in b.verts:
+		center += v
+	center /= b.verts.size()
+	for i in b.verts.size():
+		b.verts[i] -= center
 	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
+	mi.mesh = b.commit()
 	mi.material_override = mat
-	mi.visibility_range_begin = from
-	mi.visibility_range_end = to
+	mi.position = center
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
-	return 1 if aabb.size != Vector3.ZERO else 0
+	Lod.add("cliffs", mi, from, to)
+	return 1
 
 
 ## Skin builders per tile, each render quad split sub x sub.

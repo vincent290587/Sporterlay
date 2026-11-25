@@ -23,6 +23,12 @@ static func build(parent: Node3D, land: RiverLand, route: Route, bridge: PackedB
 	toon.shader = TOON
 	var grass_mat := ShaderMaterial.new()
 	grass_mat.shader = GRASS
+	# what matters most when frame time is short (see Lod): the trees and grass by the road
+	for c in [["trees", 1.0], ["grass", 0.9], ["cliffs", 0.7], ["reeds", 0.6], ["bushes", 0.6],
+			["props", 0.45], ["boulders", 0.4], ["ferns", 0.4], ["mounds", 0.3]]:
+		Lod.category(c[0], c[1])
+	Lod.add_param("grass", grass_mat, "fade_start", 130.0)
+	Lod.add_param("grass", grass_mat, "fade_end", 190.0)
 	var t := Time.get_ticks_msec()
 	var eco := RiverEcology.new(land, seed)
 	eco.place_trees(seed)
@@ -85,7 +91,7 @@ static func _reeds(parent: Node3D, land: RiverLand, rng: RandomNumberGenerator, 
 			var to_water := land.water_dir(x, z)
 			var yaw := _yaw_to(to_water) + rng.randf_range(-0.5, 0.5) if to_water != Vector2.ZERO else rng.randf() * TAU
 			reeds.put(Vector3(x, h, z), yaw, rng.randf_range(0.8, 1.3), rng.randf_range(0.8, 1.2), tint)
-	print("  reeds: ", reeds.build(parent, Meshes.reeds_leaning(rng), mat, 220.0, false))
+	print("  reeds: ", reeds.build(parent, Meshes.reeds_leaning(rng), mat, 220.0, false, 0.0, "reeds"))
 
 
 ## Grass and wildflowers along the road, as thick as the biome allows.
@@ -125,10 +131,10 @@ static func _grass(parent: Node3D, land: RiverLand, route: Route, rng: RandomNum
 			var meadow := clampf(1.0 - fo * 1.5 - land.field(land.heath, pos.x, pos.z) * 0.5 - land.field(land.wet, pos.x, pos.z) - al, 0.0, 1.0)
 			if rng.randf() < meadow * 0.06:
 				flowers[rng.randi() % flowers.size()].put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.2), rng.randf_range(0.8, 1.2), Color.WHITE)
-	print("  grass clumps: ", grass.build(parent, Meshes.grass_clump(rng, Vector3(0.18, 0.0, 0.0)), mat, GRASS_VISIBLE, false))
+	print("  grass clumps: ", grass.build(parent, Meshes.grass_clump(rng, Vector3(0.18, 0.0, 0.0)), mat, GRASS_VISIBLE, false, 0.0, "grass"))
 	var n := 0
 	for k in petals.size():
-		n += flowers[k].build(parent, Meshes.flowers(rng, petals[k]), mat, GRASS_VISIBLE, false)
+		n += flowers[k].build(parent, Meshes.flowers(rng, petals[k]), mat, GRASS_VISIBLE, false, 0.0, "grass")
 	print("  flower clumps: ", n)
 
 
