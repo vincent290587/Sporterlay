@@ -334,7 +334,7 @@ patches stretch along slopes) and times the exclusions:
 |---|---|
 | Broadleaf | forest × (0.45 + 0.6·moist + 0.5·occlusion) × (1 − ramp(height 120 → 220 m)) |
 | Spruce | forest × (ramp(height 60 → 180 m) + 1.2·(0.5 − sun) + 0.3·occlusion) |
-| Pine | forest × (0.5·ramp(height 20 → 120 m) + 0.6·ramp(sun 0.5 → 0.8) + 0.5·ridge) |
+| Pine | forest × (0.5·ramp(height 20 → 120 m) + 0.6·ramp(sun 0.5 → 0.8) + 0.5·ridge) + 0.33·heath (an open pine woodland on the heath) |
 | Birch | (0.5·forest + 0.25) × (1.2·e^(−dw/40) + 0.3·(1 − forest)) |
 | Twisted (MegaKit) | (0.25 + 0.5·forest) × (0.3 + 0.9·ramp(slope 0.08 → 0.2) + 0.6·ridge) × (1 − ramp(height 220 → 320 m)) × (1 − 0.7·e^(−dw/40)) |
 
@@ -367,6 +367,20 @@ twisted 5.1k, spruce 4.3k, dead 130.
 **Canopy** (`_canopy()`): each crown (0.6 × size, per 100 m²) is added to its cell in
 `canopy_broad` or `canopy_conifer`, blurred over 10 m, scaled ×1.5 and clamped. These drive
 the ground colour, the raised forest floor and the understory.
+
+**Far forests**: three things keep distant hills from looking bare.
+
+- *Canopy colour in the ground* (Far Cry's forest mask feeding the terrain colour): each
+  analysis cell keeps the average crown colour of its trees (`canopy_col`, from
+  `crown_color()`), stored with the canopy cover in the ground mesh's CUSTOM0. The
+  ground shader (`toon_ground`) blends it in from 500 to 1600 m with a clumpy crown
+  pattern, so a forest still reads as a forest where its trees are no longer drawn.
+  Both distances belong to the `trees` LOD category.
+- *Woods on the far hills*: outside the basin, `skirt_woods()` puts forest patches on
+  the lower, gentler mountain slopes (below ~600 m, conifers above ~300 m), in the
+  skirt's canopy colour and as shadowless blob trees out to 4.5 km (`_far_woods()`,
+  ~33k).
+- Blob trees in the basin are drawn to 3.2 km (was 2.2).
 
 **Tree models** (`common/tree_gen.gd`, `shaders/foliage.gdshader`):
 
@@ -543,12 +557,11 @@ and prints the steepest 2 m step was used. It isn't kept in the repo.
 - The rider's camera can pass close to a tree trunk on a bend.
 - Some seeds may still give an odd road (a long detour, a crossing over itself). Check
   the map.
-- About 62k trees (each with a root mound), 280k understory props, 140k ferns and 550k
-  grass clumps (seed 7, 7.4 km road). At 1080p on the dev box (RX 7900 XT), quality
-  high, auto off: 227-244 fps average, 130-138 fps 1 % low (with the MegaKit). With `--auto-lod=on --target-fps=60`
-  the manager spends the headroom on longer draw distances (~220 fps). Expected on the
-  ride PC (RTX 3060 Ti): about 75 fps at high; the manager holds 60 either way. Not
-  measured there yet.
+- About 80k trees (25k of them pines, many on the heath), 33k far-wood blobs, 340k
+  understory props and 550k grass clumps (seed 7, 7.4 km road). At 1080p on the dev
+  box (RX 7900 XT), quality high, auto off: 185-198 fps average, 111-122 fps 1 % low.
+  Expected on the ride PC (RTX 3060 Ti): about 65 fps at high; the detail manager holds
+  60 by trimming the least important props first. Not measured there yet.
 - The basin has many rivers, so the loop crosses water ~15 times, mostly small streams.
 
 ## References
