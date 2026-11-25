@@ -24,7 +24,7 @@ void light() {
 	float ndl = dot(NORMAL, LIGHT);
 	if (!LIGHT_IS_DIRECTIONAL) {
 		float a = ATTENUATION;
-		float banded = mix(a, floor(a * 3.0 + 0.6) / 3.0, 0.5);
+		float banded = mix(a, floor(a * 4.0 + 0.6) / 4.0, 0.22);
 		DIFFUSE_LIGHT += LIGHT_COLOR / PI * smoothstep(-0.15, 0.35, ndl) * banded;
 	} else {
 		float lit = smoothstep(0.0, 0.08, ndl) * smoothstep(0.3, 0.7, ATTENUATION);

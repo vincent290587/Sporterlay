@@ -52,6 +52,10 @@ func build(parent: Node3D, seed: int) -> void:
 	})
 	TransScenery.build(parent, land, route, seed, castle.blocks)
 	castle.build(parent)
+	var fire := TransTorches.new()
+	fire.name = "Fire"
+	fire.build(route, castle_s, castle, seed)
+	parent.add_child(fire)
 
 
 func _nearest_s(p: Vector2) -> float:
