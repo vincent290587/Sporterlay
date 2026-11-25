@@ -87,12 +87,12 @@ isn't needed.
 
 ## Third-party models (experiment)
 
-`assets/megakit/` holds 43 models from Quaternius' [Stylized Nature
+`assets/megakit/` holds 33 models from Quaternius' [Stylized Nature
 MegaKit](https://quaternius.com/packs/stylizednaturemegakit.html) (CC0, see its
-`LICENSE.txt`): twisted and dead trees, bushes, ferns, plants, flowers, grass, clover,
-mushrooms, rocks and pebbles. `tools/import_megakit.py <unzipped pack>` makes that
+`LICENSE.txt`): twisted and dead trees, bushes, ferns, plants, purple flowers, mushrooms,
+rocks and pebbles. `tools/import_megakit.py <unzipped pack>` makes that
 folder from the free Standard pack: it picks the models, removes normal maps and shrinks
-textures (12 MB). `MegaKit` (`scripts/common/megakit.gd`) turns a model into a mesh drawn
+textures (11 MB). Without the folder the worlds fall back to our own models. `MegaKit` (`scripts/common/megakit.gd`) turns a model into a mesh drawn
 with our `toon_tex` shader (texture × tint, toon light, cut-outs, sway, LOD dissolve),
 with normals reworked like our own trees (crown-centred leaves, upward-bent plants) and
 their baked vertex darkening dropped.

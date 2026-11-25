@@ -422,6 +422,21 @@ trunks, and clear of other understory by its own radius.
 | Boulders | 16 m | 0.04 + 0.3 × alpine + 0.12 × heath | 1.5 m | Tilted 60 % to the slope |
 | Ledge plants | per ledge | 35 % | none | Small bushes on the cliff skin |
 
+### With the MegaKit
+
+When `assets/megakit` is there, the understory also uses its models (drawn in our toon
+style, see the README):
+
+- **bushes**: about half are its red and flowering bushes, simplified beyond 60 m;
+- **ferns**: its fern, a little fewer and only lightly tinted;
+- **broad-leaf plants** (new layer, category `plants`): on wet ground and moist forest
+  edges;
+- **mushrooms** (new layer): in old, moist forest, drawn to 120 m;
+- **rocks**: mossy rocks, scree rubble (its pebbles, tinted with the scree colour) and
+  boulders all use its rocks, scaled to 60 %.
+
+Chosen by eye: its yellow and pink flowers, clover and grass are left out.
+
 ## 10. Ground cover (`RiverScenery`)
 
 - **Reeds** at the shore (0.7 m under to 0.9 m above the nearest water, within 15 m of
@@ -432,7 +447,8 @@ trunks, and clear of other understory by its own radius.
   water. Every blade tips the same way (a lean built into the mesh), and the clump is
   turned to lean **towards the water** within 25 m of it and **with the wind map**
   elsewhere.
-- **Wildflowers** with the grass: 6 % × meadow; white, yellow, purple.
+- **Wildflowers** with the grass: 6 % × meadow; white, yellow, purple (with the MegaKit:
+  its purple flowers instead).
 
 ## 11. Built things
 
@@ -529,9 +545,9 @@ and prints the steepest 2 m step was used. It isn't kept in the repo.
   the map.
 - About 62k trees (each with a root mound), 280k understory props, 140k ferns and 550k
   grass clumps (seed 7, 7.4 km road). At 1080p on the dev box (RX 7900 XT), quality
-  high, auto off: 258-272 fps average, 152-183 fps 1 % low (with the MegaKit trees). With `--auto-lod=on --target-fps=60`
+  high, auto off: 227-244 fps average, 130-138 fps 1 % low (with the MegaKit). With `--auto-lod=on --target-fps=60`
   the manager spends the headroom on longer draw distances (~220 fps). Expected on the
-  ride PC (RTX 3060 Ti): about 85 fps at high; the manager holds 60 either way. Not
+  ride PC (RTX 3060 Ti): about 75 fps at high; the manager holds 60 either way. Not
   measured there yet.
 - The basin has many rivers, so the loop crosses water ~15 times, mostly small streams.
 

@@ -17,9 +17,8 @@ DEFAULT_MAX = 1024
 
 MODELS = ([f"TwistedTree_{i}" for i in range(1, 6)] + [f"DeadTree_{i}" for i in range(1, 6)] + [
     "Bush_Common", "Bush_Common_Flowers", "Fern_1", "Plant_1", "Plant_1_Big", "Plant_7", "Plant_7_Big",
-    "Flower_3_Group", "Flower_3_Single", "Flower_4_Group", "Flower_4_Single",
-    "Grass_Common_Short", "Grass_Common_Tall", "Grass_Wispy_Short", "Grass_Wispy_Tall",
-    "Clover_1", "Clover_2", "Mushroom_Common", "Mushroom_Laetiporus"]
+    # not their yellow or pink flowers, clover or grass, by choice
+    "Mushroom_Common", "Mushroom_Laetiporus"]
     + [f"Rock_Medium_{i}" for i in range(1, 4)] + [f"Pebble_Round_{i}" for i in range(1, 6)]
     + [f"Pebble_Square_{i}" for i in range(1, 7)])
 

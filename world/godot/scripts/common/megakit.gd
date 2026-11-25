@@ -13,6 +13,8 @@ extends RefCounted
 ## each tier's fade distances.
 
 enum { TREE, PLANT, SOLID }
+const PROP := 9     # "tier" for small props: own materials, never faded per instance
+const PROP_FAR := 10 # small props simplified for distance (own materials too)
 
 const DIR := "res://assets/megakit/%s.gltf"
 const SHADER := preload("res://shaders/toon_tex.gdshader")
@@ -65,8 +67,10 @@ static func mesh(name: String, style: int, tier := 0) -> ArrayMesh:
 			arrays[Mesh.ARRAY_NORMAL] = normals
 			arrays[Mesh.ARRAY_TANGENT] = null
 			arrays[Mesh.ARRAY_COLOR] = null   # their baked darkening; only our instance tint applies
-			if tier > 0:
+			if tier > 0 and tier < TIER_SHARE.size():
 				arrays[Mesh.ARRAY_INDEX] = _simplified(arrays, TIER_SHARE[tier])
+			elif tier == PROP_FAR:
+				arrays[Mesh.ARRAY_INDEX] = _simplified(arrays, 0.25)
 			out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 			out.surface_set_material(out.get_surface_count() - 1, material(tex, cut, style, tier))
 	root.free()
@@ -151,3 +155,44 @@ static func triangles(mesh: Mesh) -> int:
 	for s in mesh.get_surface_count():
 		n += (mesh.surface_get_arrays(s)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
 	return n
+
+
+## Instancers for a list of models, one picked at random per instance: [mesh, material
+## or null] pairs.
+class Mix:
+	var meshes := []
+	var mats := []
+	var sets: Array[Instancer] = []
+
+	func _init(chunk: float, list: Array) -> void:
+		for m: Array in list:
+			meshes.append(m[0])
+			mats.append(m[1])
+			sets.append(Instancer.new(chunk))
+
+	func pick(rng: RandomNumberGenerator) -> Instancer:
+		return sets[rng.randi() % sets.size()]
+
+	func build(parent: Node3D, far: float, shadows: bool, lod: String) -> int:
+		var n := 0
+		for i in sets.size():
+			if sets[i].count() > 0:
+				n += sets[i].build(parent, meshes[i], mats[i], far, shadows, 0.0, lod)
+		return n
+
+	## Full meshes up to `switch` m, `far_meshes` (same order) beyond, to `far` m.
+	func build_lod(parent: Node3D, far_meshes: Array, switch: float, far: float, shadows: bool, lod: String) -> int:
+		var n := 0
+		for i in sets.size():
+			if sets[i].count() > 0:
+				n += sets[i].build(parent, meshes[i], mats[i], switch, shadows, 0.0, lod)
+				sets[i].build(parent, far_meshes[i], mats[i], far, false, switch, lod)
+		return n
+
+
+## A Mix of MegaKit models (props tier, their own materials).
+static func mix(chunk: float, names: Array, style: int) -> Mix:
+	var list := []
+	for n: String in names:
+		list.append([mesh(n, style, PROP), null])
+	return Mix.new(chunk, list)

@@ -65,9 +65,9 @@ func build(parent: Node3D, seed: int) -> void:
 		var trees := ["TwistedTree_1", "TwistedTree_2", "TwistedTree_3", "TwistedTree_5", "DeadTree_1", "DeadTree_3", "Bush_Common"]
 		for k in trees.size():
 			_place(parent, trees[k], Vector3((k - (trees.size() - 1) * 0.5) * 9.0, 0.0, 16.0))
-		var small := ["Bush_Common_Flowers", "Fern_1", "Plant_1_Big", "Plant_7_Big", "Flower_3_Group",
-			"Flower_4_Group", "Grass_Common_Tall", "Grass_Wispy_Tall", "Clover_2", "Mushroom_Common", "Mushroom_Laetiporus",
-			"Rock_Medium_1", "Rock_Medium_3", "Pebble_Round_1"]
+		var small := ["Bush_Common", "Bush_Common_Flowers", "Fern_1", "Plant_1", "Plant_1_Big", "Plant_7", "Plant_7_Big",
+			"Mushroom_Common", "Mushroom_Laetiporus",
+			"Rock_Medium_1", "Rock_Medium_3", "Pebble_Round_1", "Pebble_Square_2"]
 		for k in small.size():
 			_place(parent, small[k], Vector3((k - (small.size() - 1) * 0.5) * 2.6, 0.0, 26.0))
 

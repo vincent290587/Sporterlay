@@ -16,6 +16,9 @@ const GRASS_PER_SAMPLE := 200
 const GRASS_REACH := 200.0
 const WOOD := Color(0.50, 0.36, 0.24)
 const RUST := Color(0.70, 0.42, 0.22)
+## MegaKit flowers we use: the purple ones only (by choice: not their yellow or pink
+## flowers, clover or grass)
+const FLOWERS := ["Plant_7", "Plant_7_Big"]
 
 
 static func build(parent: Node3D, land: RiverLand, route: Route, bridge: PackedByteArray, cliffs: RiverCliffs, seed: int) -> void:
@@ -24,7 +27,7 @@ static func build(parent: Node3D, land: RiverLand, route: Route, bridge: PackedB
 	var grass_mat := ShaderMaterial.new()
 	grass_mat.shader = GRASS
 	# what matters most when frame time is short (see Lod): the trees and grass by the road
-	for c in [["trees", 1.0], ["grass", 0.9], ["cliffs", 0.7], ["reeds", 0.6], ["bushes", 0.6],
+	for c in [["trees", 1.0], ["grass", 0.9], ["cliffs", 0.7], ["reeds", 0.6], ["bushes", 0.6], ["plants", 0.5],
 			["props", 0.45], ["boulders", 0.4], ["ferns", 0.4], ["mounds", 0.3]]:
 		Lod.category(c[0], c[1])
 	Lod.add_param("grass", grass_mat, "fade_start", 130.0)
@@ -98,9 +101,15 @@ static func _reeds(parent: Node3D, land: RiverLand, rng: RandomNumberGenerator, 
 static func _grass(parent: Node3D, land: RiverLand, route: Route, rng: RandomNumberGenerator, mat: Material) -> void:
 	var grass := Instancer.new(GRASS_CHUNK)
 	var petals := [Color(0.95, 0.95, 0.92), Color(0.98, 0.82, 0.22), Color(0.62, 0.42, 0.85)]
-	var flowers: Array[Instancer] = []
-	for _p in petals:
-		flowers.append(Instancer.new(GRASS_CHUNK))
+	var mk := MegaKit.available()
+	var flowers: MegaKit.Mix
+	if mk:   # the MegaKit's purple flowers
+		flowers = MegaKit.mix(GRASS_CHUNK, FLOWERS, MegaKit.PLANT)
+	else:
+		var own := []
+		for c: Color in petals:
+			own.append([Meshes.flowers(rng, c), mat])
+		flowers = MegaKit.Mix.new(GRASS_CHUNK, own)
 	var hw := Route.HALF_WIDTH
 	for m in route.count():
 		var p := route.points[m]
@@ -130,12 +139,9 @@ static func _grass(parent: Node3D, land: RiverLand, route: Route, rng: RandomNum
 			grass.put(pos, _yaw_to(dir) + rng.randf_range(-0.4, 0.4), rng.randf_range(0.8, 1.3), rng.randf_range(0.6, 1.2), col)
 			var meadow := clampf(1.0 - fo * 1.5 - land.field(land.heath, pos.x, pos.z) * 0.5 - land.field(land.wet, pos.x, pos.z) - al, 0.0, 1.0)
 			if rng.randf() < meadow * 0.06:
-				flowers[rng.randi() % flowers.size()].put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.2), rng.randf_range(0.8, 1.2), Color.WHITE)
+				flowers.pick(rng).put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.2), rng.randf_range(0.8, 1.2), Color.WHITE)
 	print("  grass clumps: ", grass.build(parent, Meshes.grass_clump(rng, Vector3(0.18, 0.0, 0.0)), mat, GRASS_VISIBLE, false, 0.0, "grass"))
-	var n := 0
-	for k in petals.size():
-		n += flowers[k].build(parent, Meshes.flowers(rng, petals[k]), mat, GRASS_VISIBLE, false, 0.0, "grass")
-	print("  flower clumps: ", n)
+	print("  flowers: ", flowers.build(parent, GRASS_VISIBLE, false, "grass"))
 
 
 static func band01(v: float, a: float, b: float, c: float, d: float) -> float:
