@@ -101,11 +101,12 @@ static func material(tex: Texture2D, cut: bool, style: int, tier: int) -> Shader
 	m.shader = SHADER
 	m.set_shader_parameter("albedo_tex", tex)
 	m.set_shader_parameter("cutout", 1.0 if cut else 0.0)
-	if style == TREE and cut:
-		m.set_shader_parameter("sway", 0.05)
-		m.set_shader_parameter("sway_from", 2.5)
+	if style == TREE:      # bark and leaves together, so the tree bends as one
+		m.set_shader_parameter("sway", TreeGen.SWAY)
+		m.set_shader_parameter("sway_height", 10.0)
 	elif style == PLANT:
-		m.set_shader_parameter("sway", 0.12)
+		m.set_shader_parameter("sway", 0.06)
+		m.set_shader_parameter("sway_height", 0.6)
 	_mats[key] = m
 	return m
 
