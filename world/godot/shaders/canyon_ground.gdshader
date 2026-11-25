@@ -35,7 +35,10 @@ void fragment() {
 	if (dot(face, NORMAL) < 0.0) {
 		face = -face;
 	}
-	float cliff = (masonry > 0.0 || plaster > 0.0) ? 0.0 : (1.0 - smoothstep(0.2, 0.45, wnorm.y)) * 0.65;
+	// vertex alpha: how much rock and sand detail to paint (the endless world blends
+	// it in with the canyon biome; everything else has alpha 1)
+	float amount = COLOR.a;
+	float cliff = (masonry > 0.0 || plaster > 0.0) ? 0.0 : (1.0 - smoothstep(0.2, 0.45, wnorm.y)) * 0.65 * amount;
 	NORMAL = normalize(mix(NORMAL, face, cliff));
 	float dist = -VERTEX.z;
 	float near = 1.0 - smoothstep(detail_far * 0.4, detail_far, dist);
@@ -75,16 +78,16 @@ void fragment() {
 		// joints: thin, nearly straight vertical cracks, only some of them
 		float cn = vnoise(vec2(h.x * 0.35 + vnoise(vec2(h.y * 0.02, h.x * 0.1)) * 0.8, h.y * 0.008));
 		float crack = (1.0 - smoothstep(0.0, 0.012, abs(cn - 0.5))) * step(0.45, vnoise(vec2(h.x * 0.05, 3.0)));
-		float rock_detail = mix(1.0, shade, steep) * (1.0 - fine * 0.12 * steep * near) * (1.0 - crack * 0.3 * steep * near);
+		float rock_detail = mix(1.0, mix(1.0, shade, steep), amount) * (1.0 - fine * 0.12 * steep * near * amount) * (1.0 - crack * 0.3 * steep * near * amount);
 		c *= rock_detail;
 		// sand: ripples across the wind, and pebbles
 		float flat_ = 1.0 - steep;
 		float rip = sin(dot(wpos.xz, vec2(0.83, 0.55)) * 2.6 + vnoise(wpos.xz * 0.08) * 7.0);
-		c *= 1.0 + rip * 0.045 * flat_ * near;
+		c *= 1.0 + rip * 0.045 * flat_ * near * amount;
 		vec2 cell = floor(wpos.xz * 2.2);
 		float r = hash12(cell);
 		float peb = step(0.96, r) * (1.0 - smoothstep(0.08, 0.18, length(fract(wpos.xz * 2.2) - 0.5)));
-		c = mix(c, c * (r > 0.98 ? 1.15 : 0.82), peb * flat_ * near);
+		c = mix(c, c * (r > 0.98 ? 1.15 : 0.82), peb * flat_ * near * amount);
 	}
 	ALBEDO = srgb_to_linear(c);
 	ROUGHNESS = 1.0;

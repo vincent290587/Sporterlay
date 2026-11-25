@@ -8,6 +8,7 @@ seed when a world loads, so there are no art assets in the repo.
 | Valley | `valley` | Green valley, snowy mountain ring, a wobbly loop. Pure noise. | ~1.6 s |
 | Riverlands | `riverlands` | Autumn river basin (3.6 km across, 7.5 km loop) shaped by simulated water, layered cliffs and scree, forests of competing species, a planned road with bridges and fences | ~30 s |
 | Canyon | `canyon` | Canyon country at golden hour (9.95 km loop): red mesas, a deep canyon with Petra-like ruins cut into its wall, an oasis with palms round a pool, vultures | ~5 s |
+| Endless | `endless` | A road that never ends, through valley, autumn, dusk forest and canyon in turn, built around you as you ride; castles and arches now and then | instant |
 | Transylvania | `transylvania` | Late dusk in the Carpathians (6.9 km loop): misty hollows, dark spruce and dead trees, a torch-lit 120 m climb to a vampire's castle you ride through | ~4 s |
 
 F2 switches to the next world while riding. A third world, `gallery`, is a test bench:
@@ -117,6 +118,35 @@ Golden hour in red-rock desert. `scripts/worlds/canyon/`:
 Walls rise ~130 m, mesas up to 140 m. Desert grass: ~60k tufts, bunch grass,
 grey-green clumps and yellow flowers out to ~180 m from the road. Tomb fronts with
 stepped crowns line the canyon walls; the hamlet has ladders, jars and garden walls.
+
+## Endless
+
+A streamed world (`scripts/worlds/endless/`): nothing is built at load, everything
+around the rider is generated as they ride and dropped behind them. The same
+`--seed` always gives the same road and the same landscapes.
+
+- **`StreamRoute`** (extends `Route`): the road, integrated from s = 0 in 2 m steps.
+  Heading: a slow wander of at most ~70 deg round one direction plus bends (it can
+  never cross itself). Height: follows the land ahead, grade eased in and capped at
+  6 %. Only ~6 km either side of the rider is kept (`ensure`, `trim`).
+- **`EndlessBiomes`**: the road in 6-10 km stretches (seeded order, starting in the
+  valley), blended over 1.2 km: relief and ground colours per biome. Tiles blend
+  them per vertex by the road distance of the nearest road point.
+- **`EndlessLand`**: thread-safe height and colour; `build_tile()` runs on
+  WorkerThreadPool. Landmark `pads` raise a crag or level ground.
+- **`EndlessStream`**: 256 m near tiles along the road (400 m behind to 1.8 km
+  ahead), 1 km far tiles out to 4.2 km; one tile lands per frame and its props a few
+  kinds per frame; unloaded nodes are freed and `Lod.forget()`-ed.
+- **`EndlessScatter`** + **`EndlessKit`**: props worked out on the tile's thread
+  (each spot picks a biome by its weights, then that biome's rules), drawn with
+  models made once from all our worlds.
+- **`EndlessSky`** + `journey_sky.gdshader`: sky, sun or moon, ambient and fog
+  blended every frame from the biomes' looks (day sky and dusk sky in one shader).
+- **`EndlessLandmarks`**: every 10-20 km, by biome: Transylvania's castle on a crag in
+  a clearing beside the road (dusk forest), a natural arch over it (canyon).
+
+Sports PC, riding at ~50 km/h: valley 240 fps, dusk forest 171 fps, worst frame
+12.8 ms.
 
 ## How it connects to Sporterlay
 
