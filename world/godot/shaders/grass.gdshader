@@ -14,13 +14,14 @@ varying vec3 wpos;
 
 void vertex() {
 	float k = UV.y * UV.y;
+	float sway = UV2.x > 0.0 ? UV2.x : 1.0;   // per grass type (Meshes.GRASS_TYPES)
 	vec2 d = normalize(wind_dir);
 	float gust = sin(dot(VERTEX.xz, d) * 0.07 - TIME * 1.4) * 0.5 + 0.5;
 	gust *= 0.6 + 0.4 * sin(dot(VERTEX.xz, vec2(-d.y, d.x)) * 0.02 + TIME * 0.3);
 	float flutter = sin(TIME * 3.3 + VERTEX.x * 0.9 + VERTEX.z * 0.6);
-	VERTEX.xz += d * (gust * 0.28 + flutter * 0.04) * k;
-	VERTEX.y -= gust * 0.1 * k;
-	VERTEX.y -= smoothstep(fade_start, fade_end, distance(VERTEX, CAMERA_POSITION_WORLD)) * UV.y * 1.2;
+	VERTEX.xz += d * (gust * 0.28 + flutter * 0.04) * k * sway;
+	VERTEX.y -= gust * 0.1 * k * sway;
+	VERTEX.y -= smoothstep(fade_start, fade_end, distance(VERTEX, CAMERA_POSITION_WORLD)) * UV.y * 1.7;
 	NORMAL = vec3(0.0, 1.0, 0.0);
 	wpos = VERTEX;
 }

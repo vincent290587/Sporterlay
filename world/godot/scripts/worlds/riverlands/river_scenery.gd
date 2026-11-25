@@ -149,8 +149,33 @@ static func _reeds(parent: Node3D, land: RiverLand, rng: RandomNumberGenerator, 
 
 
 ## Grass and wildflowers along the road, as thick as the biome allows.
+## Which grass type grows here: weights from the land, with a slow patch noise so the
+## types grow in clumps. Short on dry heath, high or rocky ground and the trampled
+## verge; tall on wet, moist ground and forest edges (never right at the road edge);
+## average elsewhere.
+static func _grass_kind(land: RiverLand, patches: FastNoiseLite, x: float, z: float, rd: float, rng: RandomNumberGenerator) -> int:
+	var n := patches.get_noise_2d(x, z)
+	var moist := land.field(land.moist, x, z)
+	var short_w := land.field(land.heath, x, z) * 1.2 + land.field(land.alpine, x, z) * 1.5 \
+		+ (1.0 - moist) * 0.4 + (1.0 - smoothstep(Route.HALF_WIDTH + 0.5, Route.HALF_WIDTH + 2.5, rd)) * 1.2 + maxf(-n, 0.0) * 1.2
+	var fo := land.field(land.forest, x, z)
+	var tall_w := (land.field(land.wet, x, z) * 1.6 + moist * 0.7 + 4.0 * fo * (1.0 - fo) * 0.4 + maxf(n, 0.0) * 1.4) \
+		* smoothstep(Route.HALF_WIDTH + 2.0, Route.HALF_WIDTH + 6.0, rd)
+	var avg_w := 0.9
+	var pick := rng.randf() * (short_w + tall_w + avg_w)
+	if pick < short_w:
+		return Meshes.GRASS_SHORT
+	if pick < short_w + tall_w:
+		return Meshes.GRASS_TALL
+	return Meshes.GRASS_AVERAGE
+
+
 static func _grass(parent: Node3D, land: RiverLand, route: Route, rng: RandomNumberGenerator, mat: Material) -> void:
-	var grass := Instancer.new(GRASS_CHUNK)
+	var kinds := [Instancer.new(GRASS_CHUNK), Instancer.new(GRASS_CHUNK), Instancer.new(GRASS_CHUNK)]
+	var patches := FastNoiseLite.new()
+	patches.seed = rng.randi()
+	patches.frequency = 0.03
+	patches.fractal_octaves = 2
 	var petals := [Color(0.95, 0.95, 0.92), Color(0.98, 0.82, 0.22), Color(0.62, 0.42, 0.85)]
 	var mk := MegaKit.available()
 	var flowers: MegaKit.Mix
@@ -187,11 +212,17 @@ static func _grass(parent: Node3D, land: RiverLand, route: Route, rng: RandomNum
 			var dir := land.water_dir(pos.x, pos.z) if dw < 25.0 else land.wind_at(pos.x, pos.z)
 			if dir == Vector2.ZERO:
 				dir = land.wind_at(pos.x, pos.z)
-			grass.put(pos, _yaw_to(dir) + rng.randf_range(-0.4, 0.4), rng.randf_range(0.8, 1.3), rng.randf_range(0.6, 1.2), col)
+			var rd := land.road_distance_at(pos.x, pos.z)
+			var kind := _grass_kind(land, patches, pos.x, pos.z, rd, rng)
+			(kinds[kind] as Instancer).put(pos, _yaw_to(dir) + rng.randf_range(-0.4, 0.4), rng.randf_range(0.8, 1.3), rng.randf_range(0.7, 1.15), col)
 			var meadow := clampf(1.0 - fo * 1.5 - land.field(land.heath, pos.x, pos.z) * 0.5 - land.field(land.wet, pos.x, pos.z) - al, 0.0, 1.0)
 			if rng.randf() < meadow * 0.06:
 				flowers.pick(rng).put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.2), rng.randf_range(0.8, 1.2), Color.WHITE)
-	print("  grass clumps: ", grass.build(parent, Meshes.grass_clump(rng, Vector3(0.18, 0.0, 0.0)), mat, GRASS_VISIBLE, false, 0.0, "grass"))
+	var counts := []
+	for k in 3:
+		var inst: Instancer = kinds[k]
+		counts.append(inst.build(parent, Meshes.grass(rng, k, Vector3(0.18, 0.0, 0.0)), mat, GRASS_VISIBLE, false, 0.0, "grass"))
+	print("  grass clumps: short %d, average %d, tall %d" % counts)
 	print("  flowers: ", flowers.build(parent, GRASS_VISIBLE, false, "grass"))
 
 

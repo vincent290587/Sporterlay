@@ -460,7 +460,18 @@ Chosen by eye: its yellow and pink flowers, clover and grass are left out.
 
 - **Reeds** at the shore (0.7 m under to 0.9 m above the nearest water, within 15 m of
   it), tipping towards the water.
-- **Grass** along the road (200 clumps per 2 m of road, out to 200 m, drawn to 210 m and
+- **Grass** in three types (`Meshes.GRASS_TYPES`), each its own clump model with its own
+  sway strength (UV2.x, read by the grass shader):
+
+  | Type | Blades | Height | Where (`_grass_kind()`) |
+  |---|---|---|---|
+  | short, thick | 14 wide | 15-35 cm | dry heath, high and rocky ground, the trampled verge |
+  | average | 9 | 35-80 cm | everywhere, weight 0.9 |
+  | tall, thin | 9 narrow, 4 segments, curving over | 1.0-1.6 m | wet and moist ground, forest edges; not within ~6 m of the road |
+
+  A slow patch noise (~30 m) adds to short on one side and tall on the other, so types
+  grow in clumps. Seed 7: 210k short, 226k average, 118k tall.
+- Grass along the road (200 clumps per 2 m of road, out to 200 m, drawn to 210 m and
   sinking into the ground from 130 to 190 m), thinner in forest
   and rock. Its colour is the biome ground colour, turned rust in wetland 8-20 m from the
   water. Every blade tips the same way (a lean built into the mesh), and the clump is

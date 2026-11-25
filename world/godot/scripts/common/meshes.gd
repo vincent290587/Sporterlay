@@ -9,29 +9,69 @@ const NEEDLE_DARK := Color(0.14, 0.30, 0.20)
 const NEEDLE_LIGHT := Color(0.26, 0.48, 0.28)
 
 
-## Nine blades, each bent in two segments. UV.y is 0 at the root and 1 at the tip
-## (the grass shader bends by it); colour comes from the instance. `lean` tips every
-## blade the same way (local +x), for grass combed by the wind or leaning to water.
+enum { GRASS_SHORT, GRASS_AVERAGE, GRASS_TALL }
+
+## Grass types: blades per clump, clump radius, blade width and height ranges (m),
+## segments per blade, random lean, sway strength (UV2.x, read by the grass shader)
+## and a vertex tint (multiplied with the instance's ground colour).
+const GRASS_TYPES := {
+	GRASS_SHORT: {"blades": 14, "radius": 0.3, "width": Vector2(0.06, 0.1), "height": Vector2(0.15, 0.35),
+		"segments": 2, "lean": 0.12, "sway": 0.45, "tint": Color(0.8, 0.9, 0.78)},
+	GRASS_AVERAGE: {"blades": 9, "radius": 0.35, "width": Vector2(0.04, 0.07), "height": Vector2(0.35, 0.8),
+		"segments": 2, "lean": 0.25, "sway": 1.0, "tint": Color(1.0, 1.0, 1.0)},
+	GRASS_TALL: {"blades": 9, "radius": 0.4, "width": Vector2(0.018, 0.03), "height": Vector2(1.0, 1.6),
+		"segments": 4, "lean": 0.28, "sway": 1.6, "tint": Color(1.0, 0.96, 0.78)},
+}
+
+
+## The average clump, as before (nine blades, two segments each).
 static func grass_clump(rng: RandomNumberGenerator, lean_all := Vector3.ZERO) -> ArrayMesh:
+	return grass(rng, GRASS_AVERAGE, lean_all)
+
+
+## A clump of grass of one of GRASS_TYPES. UV.y is 0 at the root and 1 at the tip (the
+## grass shader bends by it); colour comes from the instance times the type's tint.
+## `lean_all` tips every blade the same way (local +x), for grass combed by the wind or
+## leaning to water; tall blades curve over more as they go up.
+static func grass(rng: RandomNumberGenerator, kind: int, lean_all := Vector3.ZERO) -> ArrayMesh:
+	var t: Dictionary = GRASS_TYPES[kind]
 	var b := MeshBuilder.new()
-	for _k in 9:
+	var segs: int = t.segments
+	var width: Vector2 = t.width
+	var height: Vector2 = t.height
+	var tint: Color = t.tint
+	var sway := Vector2(t.sway, 0.0)
+	for _k in int(t.blades):
 		var a := rng.randf() * TAU
-		var r := sqrt(rng.randf()) * 0.35
+		var r := sqrt(rng.randf()) * float(t.radius)
 		var base := Vector3(cos(a) * r, -0.05, sin(a) * r)
 		var facing := rng.randf() * TAU
-		var side := Vector3(cos(facing), 0.0, sin(facing)) * rng.randf_range(0.04, 0.07)
-		var lean := Vector3(cos(facing + 1.57), 0.0, sin(facing + 1.57)) * rng.randf_range(-0.25, 0.25) + lean_all
-		var h := rng.randf_range(0.35, 0.8)
-		var mid := base + lean * 0.3 + Vector3(0.0, h * 0.5, 0.0)
-		var w := Color.WHITE
-		var i0 := b.add(base - side, Vector3.UP, w, Vector2(0.0, 0.0))
-		var i1 := b.add(base + side, Vector3.UP, w, Vector2(1.0, 0.0))
-		var i2 := b.add(mid - side * 0.7, Vector3.UP, w, Vector2(0.0, 0.5))
-		var i3 := b.add(mid + side * 0.7, Vector3.UP, w, Vector2(1.0, 0.5))
-		var i4 := b.add(base + lean + Vector3(0.0, h, 0.0), Vector3.UP, w, Vector2(0.5, 1.0))
-		b.tri_raw(i0, i1, i3)
-		b.tri_raw(i0, i3, i2)
-		b.tri_raw(i2, i3, i4)
+		var side := Vector3(cos(facing), 0.0, sin(facing)) * rng.randf_range(width.x, width.y)
+		var lean := Vector3(cos(facing + 1.57), 0.0, sin(facing + 1.57)) * rng.randf_range(-t.lean, t.lean) \
+			+ lean_all * minf(height.y / 0.8, 1.3)
+		var h := rng.randf_range(height.x, height.y)
+		var prev_l := -1
+		var prev_r := -1
+		for sgi in segs + 1:
+			var f := float(sgi) / segs
+			# bends over more towards the tip: lean grows with the square of the height
+			var p := base + lean * f * f + Vector3(0.0, h * f * (1.0 - 0.15 * f * f * lean.length()), 0.0)
+			var uv := Vector2(0.5, f)
+			if sgi == segs:
+				var tip := b.add(p, Vector3.UP, tint, uv)
+				b.uv2s.append(sway)
+				b.tri_raw(prev_l, prev_r, tip)
+			else:
+				var w := 1.0 - f * 0.65
+				var l := b.add(p - side * w, Vector3.UP, tint, Vector2(0.0, f))
+				var rr := b.add(p + side * w, Vector3.UP, tint, Vector2(1.0, f))
+				b.uv2s.append(sway)
+				b.uv2s.append(sway)
+				if prev_l >= 0:
+					b.tri_raw(prev_l, prev_r, rr)
+					b.tri_raw(prev_l, rr, l)
+				prev_l = l
+				prev_r = rr
 	return b.commit()
 
 

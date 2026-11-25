@@ -9,6 +9,7 @@ var colors := PackedColorArray()
 var uvs := PackedVector2Array()
 var indices := PackedInt32Array()
 var custom := PackedFloat32Array()   # optional CUSTOM0 (RGBA float), 4 per vertex
+var uv2s := PackedVector2Array()     # optional UV2, one per vertex
 
 
 func add(p: Vector3, n: Vector3, c: Color, uv := Vector2.ZERO) -> int:
@@ -66,6 +67,8 @@ func commit() -> ArrayMesh:
 	arrays[Mesh.ARRAY_COLOR] = colors
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_INDEX] = indices
+	if uv2s.size() == verts.size():
+		arrays[Mesh.ARRAY_TEX_UV2] = uv2s
 	var flags := 0
 	if custom.size() == verts.size() * 4:
 		arrays[Mesh.ARRAY_CUSTOM0] = custom

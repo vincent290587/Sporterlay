@@ -56,8 +56,28 @@ static func _water(parent: Node3D) -> void:
 
 
 ## Grass along the road, densest at its edges.
+## Which grass type grows here: tall in hollows and by the lakes, short on higher
+## ground and the verge, average elsewhere, in patches.
+static func _grass_kind(terrain: ValleyTerrain, patches: FastNoiseLite, x: float, z: float, h: float, rd: float, rng: RandomNumberGenerator) -> int:
+	var n := patches.get_noise_2d(x, z)
+	var short_w := smoothstep(15.0, 45.0, h) * 1.2 + (1.0 - smoothstep(Route.HALF_WIDTH + 0.5, Route.HALF_WIDTH + 2.5, rd)) * 1.2 \
+		+ maxf(-n, 0.0) * 1.2
+	var tall_w := ((1.0 - smoothstep(ValleyTerrain.WATER + 2.0, 5.0, h)) * 1.4 + maxf(n, 0.0) * 1.4) \
+		* smoothstep(Route.HALF_WIDTH + 2.0, Route.HALF_WIDTH + 6.0, rd)
+	var pick := rng.randf() * (short_w + tall_w + 0.9)
+	if pick < short_w:
+		return Meshes.GRASS_SHORT
+	if pick < short_w + tall_w:
+		return Meshes.GRASS_TALL
+	return Meshes.GRASS_AVERAGE
+
+
 static func _grass(parent: Node3D, terrain: ValleyTerrain, route: Route, rng: RandomNumberGenerator) -> void:
-	var grass := Instancer.new(GRASS_CHUNK)
+	var kinds := [Instancer.new(GRASS_CHUNK), Instancer.new(GRASS_CHUNK), Instancer.new(GRASS_CHUNK)]
+	var patches := FastNoiseLite.new()
+	patches.seed = 77
+	patches.frequency = 0.03
+	patches.fractal_octaves = 2
 	var flowers: MegaKit.Mix = MegaKit.mix(GRASS_CHUNK, RiverScenery.FLOWERS, MegaKit.PLANT) if MegaKit.available() else null
 	var hw := Route.HALF_WIDTH
 	for m in route.count():
@@ -81,11 +101,15 @@ static func _grass(parent: Node3D, terrain: ValleyTerrain, route: Route, rng: Ra
 			if flowers != null and rng.randf() < 0.012:
 				flowers.pick(rng).put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.2), rng.randf_range(0.8, 1.2), Color.WHITE)
 			else:
-				grass.put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.3), rng.randf_range(0.6, 1.1), col)
+				var kind := _grass_kind(terrain, patches, pos.x, pos.z, h, terrain.road_distance_at(pos.x, pos.z), rng)
+				(kinds[kind] as Instancer).put(pos, rng.randf() * TAU, rng.randf_range(0.8, 1.3), rng.randf_range(0.7, 1.1), col)
 	var mat := ShaderMaterial.new()
 	mat.shader = GRASS
-	var mesh := Meshes.grass_clump(rng)
-	print("grass clumps: ", grass.build(parent, mesh, mat, GRASS_VISIBLE, false, 0.0, "grass"))
+	var counts := []
+	for k in 3:
+		var inst: Instancer = kinds[k]
+		counts.append(inst.build(parent, Meshes.grass(rng, k), mat, GRASS_VISIBLE, false, 0.0, "grass"))
+	print("grass clumps: short %d, average %d, tall %d" % counts)
 	if flowers != null:
 		print("flowers: ", flowers.build(parent, GRASS_VISIBLE, false, "grass"))
 	Lod.add_param("grass", mat, "fade_start", 130.0)

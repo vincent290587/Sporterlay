@@ -46,6 +46,16 @@ func build(parent: Node3D, seed: int) -> void:
 			mi.mesh = models[lod]
 			mi.position = Vector3((k - (makers.size() - 1) * 0.5) * 11.0, 0.0, -lod * 14.0)
 			parent.add_child(mi)
+	# grass types, a patch each, left to right: short, average, tall (at x = -60)
+	var grass_mat := ShaderMaterial.new()
+	grass_mat.shader = load("res://shaders/grass.gdshader")
+	for kind in 3:
+		var inst := Instancer.new(32.0)
+		for _i in 160:
+			var p := Vector3(-66.0 + kind * 6.0 + rng.randf_range(-2.4, 2.4), 0.0, rng.randf_range(-3.0, 3.0))
+			inst.put(p, rng.randf() * TAU, rng.randf_range(0.8, 1.3), rng.randf_range(0.7, 1.15), Color(0.56, 0.70, 0.30))
+		inst.build(parent, Meshes.grass(rng, kind), grass_mat, 0.0, false)
+
 	# MegaKit trees at each level of detail (--megakit=lods): columns per tier
 	if "--megakit=lods" in OS.get_cmdline_user_args() and MegaKit.available():
 		var models := [["TwistedTree_1", MegaKit.TREE], ["TwistedTree_3", MegaKit.TREE], ["DeadTree_1", MegaKit.SOLID]]
