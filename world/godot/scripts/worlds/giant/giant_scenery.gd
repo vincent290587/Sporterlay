@@ -7,6 +7,7 @@ extends RefCounted
 const TOON := preload("res://shaders/toon_vcol.gdshader")
 const GRASS := preload("res://shaders/grass.gdshader")
 const WATER := preload("res://shaders/water.gdshader")
+const BOARDWALK := preload("res://shaders/boardwalk.gdshader")
 
 const TREE_NEAR := 650.0         # full TreeGen models out to here
 const TREE_MID := 1800.0         # lighter TreeGen models out to here
@@ -18,6 +19,14 @@ const REEDS_VISIBLE := 350.0
 
 const WOOD := Color(0.52, 0.38, 0.25)
 const RUST := Color(0.64, 0.40, 0.24)
+const SWAMP_DEPTH := 7.0         # swamp trees stand in water up to this deep
+## A swamp tree (bald-cypress like): a tall, stout trunk and a loose, flat crown.
+const SWAMP := {
+	"trunk": 4.4, "trunk_r": 0.44, "depth": 3, "kids": Vector2i(2, 3), "spread": Vector2(0.6, 1.15),
+	"length": 2.0, "decay": 0.72, "up": 0.2, "taper": 0.6, "cluster": 1.55, "cards": 12, "flat": 0.6,
+}
+const SWAMP_DARK := Color(0.22, 0.32, 0.16)
+const SWAMP_LIGHT := Color(0.50, 0.56, 0.28)
 
 static func build(parent: Node3D, land: GiantLand, route: Route, seed: int) -> void:
 	for c in [["trees", 1.0], ["reeds", 0.65], ["props", 0.5]]:
@@ -26,10 +35,10 @@ static func build(parent: Node3D, land: GiantLand, route: Route, seed: int) -> v
 	toon.shader = TOON
 	_mesh(parent, land.build_mesh(), toon, true)
 	_water(parent)
-	var bridge := PackedByteArray()
-	bridge.resize(route.count())
-	bridge.fill(1)
-	_mesh(parent, Roads.ribbon(route, bridge), toon, true)
+	var deck := ShaderMaterial.new()
+	deck.shader = BOARDWALK
+	deck.set_shader_parameter("half_width", Route.HALF_WIDTH)
+	_mesh(parent, _deck(route), deck, true)
 	_railings(parent, route, toon)
 
 	var grass_mat := ShaderMaterial.new()
@@ -66,6 +75,36 @@ static func _water(parent: Node3D) -> void:
 	parent.add_child(mi)
 
 
+## The boardwalk deck: a top with UV (metres across, metres along) for the plank
+## shader, and a fascia board down each side.
+static func _deck(route: Route) -> ArrayMesh:
+	var b := MeshBuilder.new()
+	var n := route.count()
+	var hw := Route.HALF_WIDTH
+	var lift := Vector3(0.0, 0.02, 0.0)
+	var drop := Vector3(0.0, -0.16, 0.0)
+	var white := Color(1.0, 1.0, 1.0)
+	var row := 6
+	for m in n + 1:   # the last row repeats the first with s = length, so UVs don't wrap
+		var p := route.points[m % n] + lift
+		var t := route.tangent_index(m % n)
+		var right := Vector3(-t.z, 0.0, t.x)
+		var s := m * route.spacing
+		b.add(p - right * hw, Vector3.UP, white, Vector2(-hw, s))
+		b.add(p + right * hw, Vector3.UP, white, Vector2(hw, s))
+		b.add(p - right * hw, -right, white, Vector2(-hw, s))
+		b.add(p - right * hw + drop, -right, white, Vector2(-hw, s))
+		b.add(p + right * hw, right, white, Vector2(hw, s))
+		b.add(p + right * hw + drop, right, white, Vector2(hw, s))
+	for m in n:
+		var a := m * row
+		var z := (m + 1) * row
+		b.quad(a, a + 1, z + 1, z)
+		b.quad(a + 2, a + 3, z + 3, z + 2)
+		b.quad(a + 4, a + 5, z + 5, z + 4)
+	return b.commit()
+
+
 ## A box from `a` to `c`, `w` wide and `h` tall.
 static func _beam(b: MeshBuilder, a: Vector3, c: Vector3, w: float, h: float, col: Color) -> void:
 	var dir := (c - a).normalized()
@@ -97,19 +136,26 @@ static func _railings(parent: Node3D, route: Route, mat: Material) -> void:
 	var b := MeshBuilder.new()
 	var n := route.count()
 	var hw := Route.HALF_WIDTH
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 91
+	var rail := [WOOD, WOOD]
 	for m in n:
 		var p := route.points[m]
 		var t := route.tangent_index(m)
 		var right := Vector3(-t.z, 0.0, t.x)
+		if m % 4 == 0:   # each rail runs ~8 m between posts, in its own shade
+			for side in 2:
+				rail[side] = WOOD.lerp(Color(0.50, 0.47, 0.42), rng.randf() * 0.6).darkened(rng.randf() * 0.25)
 		var q := route.points[(m + 1) % n]
 		var tq := route.tangent_index((m + 1) % n)
 		var rq := Vector3(-tq.z, 0.0, tq.x)
-		for sgn: float in [-1.0, 1.0]:
+		for side in 2:
+			var sgn := -1.0 if side == 0 else 1.0
 			var off := right * (hw + 0.05) * sgn
 			var offq := rq * (hw + 0.05) * sgn
-			_beam(b, p + off + Vector3(0.0, 1.0, 0.0), q + offq + Vector3(0.0, 1.0, 0.0), 0.12, 0.12, WOOD)
+			_beam(b, p + off + Vector3(0.0, 1.0, 0.0), q + offq + Vector3(0.0, 1.0, 0.0), 0.12, 0.12, rail[side])
 			if m % 4 == 0:
-				_beam(b, p + off, p + off + Vector3(0.0, 1.08, 0.0), 0.14, 0.14, WOOD)
+				_beam(b, p + off, p + off + Vector3(0.0, 1.08, 0.0), 0.14, 0.14, rail[side].darkened(0.12))
 	_mesh(parent, b.commit(), mat, false)
 
 
@@ -129,12 +175,15 @@ static func _piers(parent: Node3D, land: GiantLand, route: Route, rng: RandomNum
 	_mesh(parent, b.commit(), mat, false)
 
 
-## Giant trees: the same TreeGen models at 10x scale, only on islands.
+## Giant trees: the same TreeGen models at 10x scale on the islands, and swamp trees
+## and dead snags standing in the shallow water.
 static func _giant_trees(parent: Node3D, land: GiantLand, route: Route,
 		rng: RandomNumberGenerator, mat: Material) -> void:
 	TreeGen.reset()
 	var broad := Instancer.new(TREE_CHUNK)
 	var pine := Instancer.new(TREE_CHUNK)
+	var swamp := Instancer.new(TREE_CHUNK)
+	var snags := Instancer.new(TREE_CHUNK)
 	var forest := FastNoiseLite.new()
 	forest.seed = seed_for(rng)
 	forest.frequency = 0.006
@@ -144,18 +193,27 @@ static func _giant_trees(parent: Node3D, land: GiantLand, route: Route,
 		var px := rng.randf_range(-GiantLand.HALF + 60.0, GiantLand.HALF - 60.0)
 		var pz := rng.randf_range(-GiantLand.HALF + 60.0, GiantLand.HALF - 60.0)
 		var h := land.natural(px, pz)
-		if h < GiantLand.WATER + 1.4 or h > 300.0:
+		if h < GiantLand.WATER - SWAMP_DEPTH or h > 300.0:
 			continue
 		if _road_distance(route, px, pz) < Route.HALF_WIDTH + 14.0:
 			continue
+		var wet := h < GiantLand.WATER + 1.4
 		var dense := smoothstep(0.12, 0.45, forest.get_noise_2d(px, pz))
+		if wet:   # thinner in deeper water, but stands even where islands have none
+			var depth := clampf((GiantLand.WATER + 1.4 - h) / (SWAMP_DEPTH + 1.4), 0.0, 1.0)
+			dense = (dense * 0.6 + 0.25) * (1.0 - depth * 0.7)
 		if rng.randf() > dense * 0.65 + 0.012:
 			continue
 		var tint := Color(1.0, 1.0, 1.0).lerp(Color(1.12, 1.08, 0.78), rng.randf() * 0.55)
 		tint = tint.darkened(rng.randf() * 0.12)
 		var s := rng.randf_range(0.75, 1.35) * 10.0
 		var pos := Vector3(px, h, pz)
-		if rng.randf() < 0.35:
+		if wet:
+			if rng.randf() < 0.14:
+				snags.put(pos, rng.randf() * TAU, s * 0.9, s * rng.randf_range(0.9, 1.2), tint.darkened(0.1))
+			else:
+				swamp.put(pos, rng.randf() * TAU, s, s * rng.randf_range(1.0, 1.3), tint)
+		elif rng.randf() < 0.35:
 			pine.put(pos, rng.randf() * TAU, s, s * rng.randf_range(0.85, 1.25), tint)
 		else:
 			broad.put(pos, rng.randf() * TAU, s, s * rng.randf_range(0.9, 1.15), tint)
@@ -172,10 +230,17 @@ static func _giant_trees(parent: Node3D, land: GiantLand, route: Route,
 		[cf[1], null, TREE_NEAR, TREE_MID, false, TreeGen.materials(1), 300.0],
 		[cf[2], null, TREE_MID, TREE_FAR, false, TreeGen.materials(2), 500.0],
 		[Meshes.conifer_far(13.0, 3.2), blob, TREE_FAR, TREE_VISIBLE, false, [blob], 700.0]], "trees")
-	print("  giant trees: ", n)
+	var sw := TreeGen.lods(rng, func(r: RandomNumberGenerator, lod: int) -> ArrayMesh:
+		return TreeGen.branching(r, SWAMP, SWAMP_DARK, SWAMP_LIGHT, TreeGen.BARK.darkened(0.15), false, lod))
+	var w := swamp.build_tiers(parent, [[sw[0], null, 0.0, TREE_NEAR, true, TreeGen.materials(0), 200.0],
+		[sw[1], null, TREE_NEAR, TREE_MID, false, TreeGen.materials(1), 300.0],
+		[sw[2], null, TREE_MID, TREE_FAR, false, TreeGen.materials(2), 500.0],
+		[Meshes.broadleaf_far(rng, SWAMP_DARK, SWAMP_LIGHT), blob, TREE_FAR, TREE_VISIBLE, false, [blob], 700.0]], "trees")
+	w += snags.build_tiers(parent, [[TreeGen.dead(rng), null, 0.0, TREE_MID, true, TreeGen.materials(4), 300.0]], "trees")
+	print("  giant trees: ", n, " on land, ", w, " in the water")
 
 
-## Reeds and cattails along the island shores.
+## Reeds and cattails along the island shores and in the shallows.
 static func _reeds(parent: Node3D, land: GiantLand, route: Route,
 		rng: RandomNumberGenerator, mat: Material) -> void:
 	var inst := Instancer.new(REEDS_CHUNK)
@@ -183,7 +248,7 @@ static func _reeds(parent: Node3D, land: GiantLand, route: Route,
 		var px := rng.randf_range(-GiantLand.HALF + 40.0, GiantLand.HALF - 40.0)
 		var pz := rng.randf_range(-GiantLand.HALF + 40.0, GiantLand.HALF - 40.0)
 		var h := land.natural(px, pz)
-		if h < GiantLand.WATER + 0.25 or h > GiantLand.WATER + 2.6:
+		if h < GiantLand.WATER - 0.8 or h > GiantLand.WATER + 2.6:
 			continue
 		if _road_distance(route, px, pz) < Route.HALF_WIDTH + 3.0:
 			continue
