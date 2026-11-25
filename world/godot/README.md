@@ -169,7 +169,10 @@ and the trees are `TreeGen` models drawn at 10x normal size on the islands.
   outside `RING` (3 km).
 - **The loop** (`GiantWorld._loop`): a circle of ~2.15 km radius with broad lobes and a
   faster meander, kept inside the ring: about 15 km around.
-- **`GiantScenery`**: the ground mesh, a water plane, the boardwalk deck (its own mesh
+- **`GiantScenery`**: the ground mesh, a swamp-water plane (`shaders/swamp_water.gdshader`:
+  tea-coloured, the bottom showing through with depth and bent by small waves, the sky
+  reflected by view angle, sun glitter, duckweed patches, lily pads and shore foam; the
+  other worlds keep `water.gdshader`), the boardwalk deck (its own mesh
   with UVs in metres, drawn by `shaders/boardwalk.gdshader`: planks with their own tone,
   grain, staggered joints, knots, nails, gaps and mossy edges, faded with distance),
   posts and railings in varied shades, 10x trees with LOD tiers, and reeds along the
@@ -177,8 +180,10 @@ and the trees are `TreeGen` models drawn at 10x normal size on the islands.
 - The road follows the land, but is lifted to `WATER + 1.4` over water; the deck is
   wooden and stands on posts. Land trees grow above `WATER + 1.4`; below
   that, down to `SWAMP_DEPTH` (7 m) of water, stand swamp trees (a tall, stout `SWAMP`
-  profile, olive crowns) and dead snags, thinning out with depth. All stay clear of the
-  road.
+  profile, olive crowns) and dead snags, thinning out with depth. Each stands on prop roots and
+  cypress knees (`_roots_mesh`, three variants), with ripples drifting out where it
+  meets the water (`shaders/ripple.gdshader`, also at the boardwalk posts). Wet trees
+  keep their root spread clear of the road.
 
 ## How it connects to Sporterlay
 

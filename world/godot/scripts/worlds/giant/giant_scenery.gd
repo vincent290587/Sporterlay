@@ -6,8 +6,11 @@ extends RefCounted
 
 const TOON := preload("res://shaders/toon_vcol.gdshader")
 const GRASS := preload("res://shaders/grass.gdshader")
-const WATER := preload("res://shaders/water.gdshader")
+const WATER := preload("res://shaders/swamp_water.gdshader")
 const BOARDWALK := preload("res://shaders/boardwalk.gdshader")
+const RIPPLE := preload("res://shaders/ripple.gdshader")
+const RIPPLE_VISIBLE := 700.0
+const ROOTS_VISIBLE := 1400.0
 
 const TREE_NEAR := 650.0         # full TreeGen models out to here
 const TREE_MID := 1800.0         # lighter TreeGen models out to here
@@ -28,13 +31,14 @@ const SWAMP := {
 const SWAMP_DARK := Color(0.22, 0.32, 0.16)
 const SWAMP_LIGHT := Color(0.50, 0.56, 0.28)
 
-static func build(parent: Node3D, land: GiantLand, route: Route, seed: int) -> void:
+## `sun` is the sun light (the water's glitter points at it).
+static func build(parent: Node3D, land: GiantLand, route: Route, seed: int, sun: DirectionalLight3D) -> void:
 	for c in [["trees", 1.0], ["reeds", 0.65], ["props", 0.5]]:
 		Lod.category(c[0], c[1])
 	var toon := ShaderMaterial.new()
 	toon.shader = TOON
 	_mesh(parent, land.build_mesh(), toon, true)
-	_water(parent)
+	_water(parent, sun)
 	var deck := ShaderMaterial.new()
 	deck.shader = BOARDWALK
 	deck.set_shader_parameter("half_width", Route.HALF_WIDTH)
@@ -62,11 +66,14 @@ static func _mesh(parent: Node3D, mesh: Mesh, mat: Material, shadows: bool) -> v
 	parent.add_child(mi)
 
 
-static func _water(parent: Node3D) -> void:
+static func _water(parent: Node3D, sun: DirectionalLight3D) -> void:
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(GiantLand.FAR * 2.0, GiantLand.FAR * 2.0)
 	var mat := ShaderMaterial.new()
 	mat.shader = WATER
+	mat.set_shader_parameter("sun_dir", sun.transform.basis.z)
+	mat.set_shader_parameter("sky_top", GiantWorld.SKY_TOP)
+	mat.set_shader_parameter("sky_horizon", GiantWorld.SKY_HORIZON)
 	var mi := MeshInstance3D.new()
 	mi.mesh = plane
 	mi.material_override = mat
@@ -161,6 +168,7 @@ static func _railings(parent: Node3D, route: Route, mat: Material) -> void:
 
 static func _piers(parent: Node3D, land: GiantLand, route: Route, rng: RandomNumberGenerator, mat: Material) -> void:
 	var b := MeshBuilder.new()
+	var ripples := Instancer.new(TREE_CHUNK)
 	var n := route.count()
 	var hw := Route.HALF_WIDTH
 	for m in range(0, n, 8):
@@ -169,10 +177,14 @@ static func _piers(parent: Node3D, land: GiantLand, route: Route, rng: RandomNum
 		var right := Vector3(-t.z, 0.0, t.x)
 		for sgn: float in [-1.0, 1.0]:
 			var off := right * (hw + 0.15) * sgn
-			var foot := maxf(land.natural(p.x + off.x, p.z + off.z), GiantLand.WATER) - 0.4
+			var ground := land.natural(p.x + off.x, p.z + off.z)
+			var foot := maxf(ground, GiantLand.WATER) - 0.4
+			if ground < GiantLand.WATER - 0.2:   # the post's radius is ~0.3 m
+				ripples.put(Vector3(p.x + off.x, GiantLand.WATER + 0.05, p.z + off.z), rng.randf() * TAU, 1.5, 1.0, Color.WHITE)
 			_beam(b, p + off + Vector3(0.0, -0.35, 0.0),
 				Vector3(p.x + off.x, foot, p.z + off.z), 0.38, 0.58, WOOD.darkened(0.2 + rng.randf() * 0.15))
 	_mesh(parent, b.commit(), mat, false)
+	print("  post ripples: ", ripples.build(parent, _ripple_plane(), _ripple_mat(0.2), RIPPLE_VISIBLE, false, 0.0, "props"))
 
 
 ## Giant trees: the same TreeGen models at 10x scale on the islands, and swamp trees
@@ -184,6 +196,8 @@ static func _giant_trees(parent: Node3D, land: GiantLand, route: Route,
 	var pine := Instancer.new(TREE_CHUNK)
 	var swamp := Instancer.new(TREE_CHUNK)
 	var snags := Instancer.new(TREE_CHUNK)
+	var roots: Array[Instancer] = [Instancer.new(TREE_CHUNK), Instancer.new(TREE_CHUNK), Instancer.new(TREE_CHUNK)]
+	var ripples := Instancer.new(TREE_CHUNK)
 	var forest := FastNoiseLite.new()
 	forest.seed = seed_for(rng)
 	forest.frequency = 0.006
@@ -209,10 +223,20 @@ static func _giant_trees(parent: Node3D, land: GiantLand, route: Route,
 		var s := rng.randf_range(0.75, 1.35) * 10.0
 		var pos := Vector3(px, h, pz)
 		if wet:
-			if rng.randf() < 0.14:
+			var snag := rng.randf() < 0.14
+			# trunk radius at the water line (m); roots and knees reach ~4 of them
+			var trunk: float = (TreeGen.BROADLEAF.trunk_r * 0.9 if snag else SWAMP.trunk_r) * s * 1.15
+			if _road_distance(route, px, pz) < Route.HALF_WIDTH + 3.0 + trunk * 4.2:
+				continue
+			if snag:
 				snags.put(pos, rng.randf() * TAU, s * 0.9, s * rng.randf_range(0.9, 1.2), tint.darkened(0.1))
 			else:
 				swamp.put(pos, rng.randf() * TAU, s, s * rng.randf_range(1.0, 1.3), tint)
+			var foot := Vector3(px, maxf(h, GiantLand.WATER), pz)
+			roots[rng.randi() % roots.size()].put(foot, rng.randf() * TAU, trunk, trunk * rng.randf_range(0.6, 0.85), tint)
+			if h < GiantLand.WATER - 0.2:
+				var size := trunk * 3.8 / 0.26   # rings reach ~3.8 trunk radii
+				ripples.put(Vector3(px, GiantLand.WATER + 0.05, pz), rng.randf() * TAU, size * 0.26, 1.0, Color.WHITE)
 		elif rng.randf() < 0.35:
 			pine.put(pos, rng.randf() * TAU, s, s * rng.randf_range(0.85, 1.25), tint)
 		else:
@@ -237,7 +261,52 @@ static func _giant_trees(parent: Node3D, land: GiantLand, route: Route,
 		[sw[2], null, TREE_MID, TREE_FAR, false, TreeGen.materials(2), 500.0],
 		[Meshes.broadleaf_far(rng, SWAMP_DARK, SWAMP_LIGHT), blob, TREE_FAR, TREE_VISIBLE, false, [blob], 700.0]], "trees")
 	w += snags.build_tiers(parent, [[TreeGen.dead(rng), null, 0.0, TREE_MID, true, TreeGen.materials(4), 300.0]], "trees")
+	for inst in roots:
+		inst.build(parent, _roots_mesh(rng, TreeGen.BARK.darkened(0.15)), mat, ROOTS_VISIBLE, true, 0.0, "trees")
+	print("  ripples: ", ripples.build(parent, _ripple_plane(), _ripple_mat(0.26), RIPPLE_VISIBLE, false, 0.0, "props"))
 	print("  giant trees: ", n, " on land, ", w, " in the water")
+
+
+## Roots for a trunk of radius 1 standing at y = 0 (the water line): arched prop
+## roots from the trunk out and down into the water, and cypress knees poking up.
+static func _roots_mesh(rng: RandomNumberGenerator, bark: Color) -> ArrayMesh:
+	var b := MeshBuilder.new()
+	var n := rng.randi_range(7, 10)
+	var a0 := rng.randf() * TAU
+	for k in n:
+		var a := a0 + TAU * k / n + rng.randf_range(-0.25, 0.25)
+		var d := Vector3(cos(a), 0.0, sin(a))
+		var col := bark.darkened(rng.randf() * 0.15)
+		var start := d * 0.75 + Vector3(0.0, rng.randf_range(0.7, 1.6), 0.0)
+		var reach := rng.randf_range(2.2, 3.4)
+		var mid := d * (reach * 0.55) + Vector3(0.0, rng.randf_range(0.3, 0.7), 0.0)
+		var end := d * reach + Vector3(0.0, -1.5, 0.0)
+		var r := rng.randf_range(0.26, 0.38)
+		Meshes.limb(b, start, mid, r, r * 0.75, 6, col)
+		Meshes.limb(b, mid, end, r * 0.75, r * 0.45, 6, col)
+	for k in rng.randi_range(6, 11):
+		var a := rng.randf() * TAU
+		var p := Vector3(cos(a), 0.0, sin(a)) * rng.randf_range(2.0, 3.8)
+		var top := rng.randf_range(0.15, 0.45)
+		Meshes.limb(b, p + Vector3(0.0, -0.6, 0.0), p + Vector3(0.0, top * 0.6, 0.0),
+			rng.randf_range(0.11, 0.17), 0.08, 7, bark.lightened(0.05))
+		Meshes.limb(b, p + Vector3(0.0, top * 0.6, 0.0), p + Vector3(0.0, top, 0.0), 0.08, 0.03, 7, bark.lightened(0.08))
+	return b.commit()
+
+
+## A flat 2x2 plane for ripples, facing up.
+static func _ripple_plane() -> PlaneMesh:
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(2.0, 2.0)
+	return plane
+
+
+static func _ripple_mat(inner: float) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = RIPPLE
+	m.set_shader_parameter("inner", inner)
+	m.render_priority = 1   # after the water
+	return m
 
 
 ## Reeds and cattails along the island shores and in the shallows.

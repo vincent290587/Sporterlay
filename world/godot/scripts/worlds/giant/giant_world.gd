@@ -4,6 +4,8 @@ extends RefCounted
 ## mountain skirt, with trees at 10x normal size. See GiantLand and GiantScenery.
 
 const TITLE := "Giant Wetland"
+const SKY_TOP := Color(0.20, 0.42, 0.55)
+const SKY_HORIZON := Color(0.72, 0.86, 0.82)
 
 var route := Route.new()
 var land := GiantLand.new()
@@ -14,9 +16,9 @@ func build(parent: Node3D, seed: int) -> void:
 	var loop := _loop(seed)
 	route.build_loop(loop, land.natural, func(_x: float, _z: float) -> float:
 		return GiantLand.WATER + 1.4)
-	Look.apply(parent, {
-		"sky_top": Color(0.20, 0.42, 0.55),
-		"sky_horizon": Color(0.72, 0.86, 0.82),
+	var sun := Look.apply(parent, {
+		"sky_top": SKY_TOP,
+		"sky_horizon": SKY_HORIZON,
 		"sky_ground": Color(0.28, 0.38, 0.34),
 		"sun_color": Color(1.0, 0.92, 0.72),
 		"sun_sky_color": Color(1.0, 0.88, 0.62),
@@ -31,7 +33,7 @@ func build(parent: Node3D, seed: int) -> void:
 		"saturation": 1.05,
 		"shadow_distance": 900.0,
 	})
-	GiantScenery.build(parent, land, route, seed)
+	GiantScenery.build(parent, land, route, seed, sun)
 
 
 ## A circle whose radius wobbles with periodic noise, so it can't cross itself:
