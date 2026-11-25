@@ -20,6 +20,7 @@ class Inbox:
 var route: StreamRoute
 var land: EndlessLand
 var kit: EndlessKit
+var landmarks: EndlessLandmarks
 var rider: Rider
 var ground_mat: Material
 var road_mat: Material
@@ -73,6 +74,8 @@ func _exit_tree() -> void:
 
 func _update(s: float) -> void:
 	route.ensure(s + ROAD_KEEP)
+	if landmarks != null:
+		landmarks.plan_up_to(s + ROAD_KEEP - 200.0)
 	route.trim(s - ROAD_KEEP)
 	_update_roads(s)
 	if absf(s - _want_at) > 40.0:
@@ -152,7 +155,7 @@ func _start(key: Vector3i) -> void:
 	_tasks[key] = WorkerThreadPool.add_task(func() -> void:
 		var result := l.build_tile(Vector2i(key.x, key.y), far, road)
 		if not far:
-			result["props"] = EndlessScatter.scatter(result, road, l.biomes, l.seed)
+			result["props"] = EndlessScatter.scatter(result, road, l, l.seed)
 		result["k3"] = key
 		inbox.mutex.lock()
 		inbox.done.append(result)

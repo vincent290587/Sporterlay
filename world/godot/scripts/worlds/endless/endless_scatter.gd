@@ -8,7 +8,8 @@ extends RefCounted
 const CELL := 7.0
 
 
-static func scatter(tile: Dictionary, road: Array, biomes: EndlessBiomes, seed: int) -> Dictionary:
+static func scatter(tile: Dictionary, road: Array, land: EndlessLand, seed: int) -> Dictionary:
+	var biomes := land.biomes
 	var key: Vector2i = tile.key
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(Vector3i(key.x, key.y, seed))
@@ -37,6 +38,8 @@ static func scatter(tile: Dictionary, road: Array, biomes: EndlessBiomes, seed: 
 			var rd: float = at.rd
 			var ny: float = at.ny
 			if rd < Route.HALF_WIDTH + 4.0 or ny < 0.78:
+				continue
+			if land.pad_inside(px, pz, 90.0):   # a clearing round each landmark, so it's seen
 				continue
 			var b := _pick(rng, at.w)
 			var dense := smoothstep(-0.15, 0.35, forest.get_noise_2d(px, pz))
@@ -134,7 +137,7 @@ static func scatter(tile: Dictionary, road: Array, biomes: EndlessBiomes, seed: 
 					else:
 						put.call("grass_short", pos, yaw, 1.2, 0.8, Color(0.70, 0.62, 0.32))
 				EndlessBiomes.DUSK:
-					if r < 0.25:
+					if r < 0.25 and float(at.rd) > Route.HALF_WIDTH + 1.8:
 						put.call("fern", pos, yaw, rng.randf_range(0.7, 1.3), rng.randf_range(0.7, 1.3), Color(0.45, 0.5, 0.42).darkened(rng.randf() * 0.3))
 					elif r < 0.6:
 						put.call("grass_mid", pos, yaw, rng.randf_range(0.8, 1.2), rng.randf_range(0.7, 1.0), Color(0.30, 0.38, 0.22).darkened(rng.randf() * 0.2))

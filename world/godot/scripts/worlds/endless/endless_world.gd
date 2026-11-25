@@ -11,6 +11,7 @@ var land := EndlessLand.new()
 var stream := EndlessStream.new()
 var sky := EndlessSky.new()
 var kit := EndlessKit.new()
+var landmarks := EndlessLandmarks.new()
 
 
 func build(parent: Node3D, seed: int) -> void:
@@ -24,6 +25,12 @@ func build(parent: Node3D, seed: int) -> void:
 	sky.biomes = land.biomes
 	parent.add_child(sky)
 	kit.setup(seed)
+	landmarks.name = "Landmarks"
+	landmarks.route = route
+	landmarks.land = land
+	landmarks.seed = seed
+	parent.add_child(landmarks)
+	stream.landmarks = landmarks
 	stream.name = "Stream"
 	stream.kit = kit
 	stream.route = route
@@ -34,6 +41,7 @@ func build(parent: Node3D, seed: int) -> void:
 ## Called once the rider is placed: build what's around it before the first frame.
 func attach(rider: Rider) -> void:
 	stream.rider = rider
+	landmarks.rider = rider
 	sky.rider = rider
 	sky.update(rider.distance)
 	stream.prime(rider.distance)

@@ -23,6 +23,10 @@ var base_noise := FastNoiseLite.new()
 var detail := FastNoiseLite.new()
 var biomes := EndlessBiomes.new()
 var seed := 0
+## Landmark pads [centre, radius, height, falloff]: the ground is set to `height`
+## inside, blending out over `falloff`. Replaced (never changed in place) when one
+## is added, so worker threads always read a whole list.
+var pads: Array = []
 
 
 func setup(p_seed: int) -> void:
@@ -40,12 +44,32 @@ func base_height(x: float, z: float) -> float:
 	return base_noise.get_noise_2d(x, z) * 45.0
 
 
+func add_pad(centre: Vector2, radius: float, height: float, falloff: float) -> void:
+	var list := pads.duplicate()
+	list.append([centre, radius, height, falloff])
+	pads = list
+
+
+## How far (m) a point is inside a pad's flat (negative outside); for the scatter.
+func pad_inside(x: float, z: float, margin: float) -> bool:
+	for p: Array in pads:
+		if Vector2(x, z).distance_to(p[0]) < float(p[1]) + margin:
+			return true
+	return false
+
+
 ## Height before the road's bed is carved, `d` m from the road, with biome weights `w`.
 func natural(x: float, z: float, d: float, w: PackedFloat32Array) -> float:
 	var h := base_height(x, z) + detail.get_noise_2d(x, z) * 1.5
 	for k in EndlessBiomes.COUNT:
 		if w[k] > 0.001:
 			h += w[k] * biomes.relief(k, x, z, d)
+	for p: Array in pads:
+		var pd := Vector2(x, z).distance_to(p[0])
+		if pd < float(p[1]) + float(p[3]):
+			# a crag: steep sides, a little rough
+			var t := smoothstep(float(p[1]), float(p[1]) + float(p[3]), pd + detail.get_noise_2d(x * 3.0, z * 3.0) * 6.0)
+			h = lerpf(p[2], minf(h, p[2]), t) if t < 1.0 else h
 	return h
 
 
