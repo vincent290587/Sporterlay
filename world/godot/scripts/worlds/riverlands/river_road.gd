@@ -32,7 +32,7 @@ static func plan(land: RiverLand, seed: int) -> PackedVector2Array:
 	for c in cells:
 		raw.append(Vector2(-RiverLand.HALF + (c % na) * RiverLand.A_STEP, -RiverLand.HALF + (c / na) * RiverLand.A_STEP))
 	for _i in 3:
-		raw = Route.smooth_loop2(raw, 3)
+		raw = Route.smooth_loop2(raw, int(30.0 / RiverLand.A_STEP))
 	return raw
 
 
@@ -43,16 +43,17 @@ static func _drop_spurs(cells: PackedInt32Array) -> PackedInt32Array:
 	var n := cells.size()
 	var longest := int(n * 0.45)
 	var out := PackedInt32Array()
+	var near2 := int(pow(24.5 / RiverLand.A_STEP, 2.0))
 	var i := 0
 	while i < n:
 		out.append(cells[i])
 		var ci := cells[i] % na
 		var cj := cells[i] / na
 		var best := -1
-		for j in range(i + 12, mini(i + longest, n)):
+		for j in range(i + int(120.0 / RiverLand.A_STEP), mini(i + longest, n)):
 			var dx := cells[j] % na - ci
 			var dz := cells[j] / na - cj
-			if dx * dx + dz * dz <= 6:
+			if dx * dx + dz * dz <= near2:
 				best = j
 		i = best if best >= 0 else i + 1
 	return out
@@ -65,8 +66,9 @@ static func _best_cell(land: RiverLand, p: Vector2) -> int:
 	var cj := int((p.y + RiverLand.HALF) / RiverLand.A_STEP)
 	var best := cj * na + ci
 	var best_score := 1e30
-	for j in range(cj - 12, cj + 13):
-		for i in range(ci - 12, ci + 13):
+	var w := int(120.0 / RiverLand.A_STEP)
+	for j in range(cj - w, cj + w + 1):
+		for i in range(ci - w, ci + w + 1):
 			if i < 1 or j < 1 or i >= na - 1 or j >= na - 1:
 				continue
 			var c := j * na + i

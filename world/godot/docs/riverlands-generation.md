@@ -1,7 +1,8 @@
 # How Riverlands is generated
 
 Riverlands is the second world in the Godot project: an autumn river basin built from a
-seed each time it loads (~15 s on the dev box). No art assets, no external tools. Everything is
+seed each time it loads (~30 s on the dev box; build time doesn't matter here, quality
+does). No art assets, no external tools. Everything is
 GDScript and shaders in this repo. This document covers the pipeline, the logic of each
 step, the parameters that shape it, and the tools used to build and check it.
 
@@ -47,7 +48,7 @@ every number here is ours.
 
 ```mermaid
 flowchart TD
-    A[Seed] --> B[1. Base land<br/>warped noise, tilted basin, mountain ring]
+    A[Seed] --> B[1. Base land<br/>warped noise, tilted basin, mountain ring,<br/>droplet erosion]
     B --> C[2. Fresh water<br/>priority flood, flow accumulation,<br/>valley cutting, silt, rivers, lakes]
     C --> D[3. Abiotic maps<br/>slope, concavity, sun, occlusion, wind,<br/>moisture, distance to water]
     D --> E[4. Biome fields<br/>forest, wetland, heath, alpine]
@@ -63,21 +64,24 @@ flowchart TD
 
 | Step | Code | Typical time |
 |---|---|---|
-| 1-4 Land, water, maps, biomes | `RiverLand.build()` | ~1.4 s |
-| 5 Road | `RiverRoad.plan()`, `Route.build_loop()` | ~0.4 s |
+| 1 Erosion | `RiverLand._erode()` | ~3.9 s |
+| 2-4 Water, maps, biomes | `RiverLand.build()` | ~5 s |
+| 5 Road | `RiverRoad.plan()`, `Route.build_loop()` | ~1.9 s |
 | 6 Render heights | `RiverLand.make_heights()`, `carve()` | ~0.7 s |
-| 7 Rock fall | `RiverCliffs.simulate_scree()` | ~0.3 s |
-| 8 Trees | `RiverEcology.place_trees()`, `build_trees()` | ~1.6 s |
-| Meshes | `RiverLand.build_mesh()`, `RiverCliffs.build_skin()`, `water_mesh()` | ~3.9 s |
-| 9 Understory | `RiverEcology.build_understory()` | ~3.1 s |
+| 7 Rock fall | `RiverCliffs.simulate_scree()` | ~0.8 s |
+| 8 Trees | `RiverEcology.place_trees()`, `build_trees()` | ~3 s |
+| Meshes | `RiverLand.build_mesh()`, `RiverCliffs.build_skin()`, `water_mesh()` | ~7.3 s |
+| 9 Understory | `RiverEcology.build_understory()` | ~4.2 s |
 | 10-11 Ground cover, built things | `RiverScenery._reeds()`, `_grass()`, `_bridges()`, `_fences()` | ~3.8 s |
 
-Times are from the Linux dev box (seed 7, ~15 s in all). Each step prints its time.
+Times are from the Linux dev box (seed 7, ~30 s in all). Each step prints its time.
 
 ## Coordinates and grids
 
 - Metres, y up. The playable land is the square −1800…1800 m in x and z (`HALF`).
-- **Analysis grid**: 10 m cells, 361 × 361 (`A_STEP`, `NA`). Water, maps and biomes
+- **Analysis grid**: 5 m cells, 721 × 721 (`A_STEP`, `NA`). Radii and distances in the
+  code are given in metres (`blur_m()`, `… / A_STEP`), and flow is counted as area in
+  100 m² units, so the grid can change without retuning. Water, maps and biomes
   live here. It's coarse enough to process quickly in GDScript and fine enough for
   rivers and forests.
 - **Render grid**: 5 m, 721 × 721 (`STEP`, `N`). This is the ground mesh, built from the
@@ -104,6 +108,24 @@ lookups are `cell()` and `water_at()`.
   leaving a gap where the river leaves.
 
 The same function feeds the skirt, so the mountains on the horizon match the land.
+
+### Droplet erosion (`_erode()`)
+
+150,000 rain drops (`DROPLETS`) start at random points on the analysis grid and run for up
+to 60 steps. Each step:
+
+1. The direction is the old one × 0.05 (inertia) plus the downhill gradient × 0.95,
+   normalised; the drop moves one cell that way.
+2. Its carrying capacity is `max(drop in height, 0.01) × speed × water × 4`.
+3. Going uphill, it fills the pit behind it; carrying more than its capacity, it drops
+   30 % of the excess; otherwise it picks up 30 % of what it could still carry (never
+   more than the height drop), spread over the four cells around it.
+4. Speed becomes `sqrt(speed² + drop × 4)`; water evaporates by 2 %.
+
+The total change is blurred by one cell before it's applied, so single cells don't get
+pitted. The result is fine rills and gullies on slopes and small fans where they flatten,
+on top of which the water step cuts the big valleys. The talk mentions erosion only for
+cliffs; this one is the standard droplet model.
 
 ## 2. Fresh water
 
@@ -263,8 +285,9 @@ Steepest 2 m step on both worlds' roads (seed 7): 7.50 %.
    road; from there it blends back to the natural height by 48 m, giving cuttings and
    embankments. Points within 4-14 m of water are left alone, so the river stays open
    under bridges.
-3. After the trees (step 8), `deform_under_trees()` raises the ground up to 0.7 m where
+3. After the trees (step 8), `deform_under_trees()` raises the ground up to 0.3 m where
    the canopy is thickest (roots hold the soil), except along the road and by water.
+   Each trunk also gets its own soil mound (step 8).
 4. `build_mesh()`: the grid plus the skirt in one mesh, with vertex normals and colours.
 
 ## 7. Cliffs (`RiverCliffs`)
@@ -277,14 +300,15 @@ regional noise. A blocky value noise (35 m cells) picks which stack, so layer li
 off and restart offset.
 
 **Rock fall** (`simulate_scree()`), on the analysis grid: every cell steeper than 0.24
-that isn't water sends 3 particles downhill, each step to the lowest neighbour (35 % of
-the time the second lowest, so fans spread), up to 40 steps, stopping at water or where
+that isn't water sends a particle downhill, each step to the lowest neighbour (35 % of
+the time the second lowest, so fans spread), for up to 400 m, stopping at water or where
 the slope drops under 0.06. Each visited cell gets a weight (falling with distance) and
-the particle's layer colour. The result, blurred once and kept off the cliffs themselves,
-is `scree` (0…1) and `scree_col`.
+the particle's layer colour. The result, blurred over 10 m and kept off the cliffs themselves,
+is `scree` (0…1) and `scree_col`; cells the blur reached but no rock did take the colour
+of the layer they sit on.
 
 **Skin** (`build_skin()`): every render quad with a corner steeper than normal.y 0.77
-(about 40°), away from road and water, is split 3×3 (~1.7 m). Each vertex is pushed out along the
+(about 40°), away from road and water, is split 5×5 (1 m). Each vertex is pushed out along the
 slope's horizontal direction by `cliffness × (0.3 + layer depth + crag noise × 0.5) + 0.12`
 m, where cliffness ramps from 0 at normal.y 0.77 to 1 at 0.68, so the skin melts into the
 ground at its edges. Colour blends from the ground colour to the layer colour by
@@ -329,14 +353,19 @@ and young edges grow denser. That's the talk's density ramp.
 
 **Dead trees**: 4 % of trees deeper than 21 m into the forest.
 
-**Canopy** (`_canopy()`): each crown (0.6 × size) is added to its cell in
-`canopy_broad` or `canopy_conifer`, blurred once, scaled ×1.5 and clamped. These drive
+**Canopy** (`_canopy()`): each crown (0.6 × size, per 100 m²) is added to its cell in
+`canopy_broad` or `canopy_conifer`, blurred over 10 m, scaled ×1.5 and clamped. These drive
 the ground colour, the raised forest floor and the understory.
 
 **Rendering**: one `Instancer` per species and colour (broadleaf in four autumn
 palettes picked by a hue noise plus a random nudge, so colours come in patches with
 strays), full meshes to 900 m and one-blob/one-cone versions to 2.2 km. Shadows reach
 400 m.
+
+**Root mounds**: every tree away from the road stands on a low mound (2.4 m × tree size
+across, 0.45 m high, rim just under the ground) in the ground's colour at that spot, drawn
+to 250 m. That's the talk's terrain deformation around trunks, done as instances because
+the ground mesh is too coarse (5 m) to raise around each trunk.
 
 ## 9. Understory (`RiverEcology.build_understory()`)
 
@@ -445,7 +474,9 @@ and prints the steepest 2 m step was used. It isn't kept in the repo.
 | Bigger or sparser trees | `SIZES`, `TREE_RADIUS` (spacing per size), `AGE_DEPTH` (how fast trees grow into the forest) |
 | Thicker forest edges | the bush band on `age`, `REGROWTH` |
 | More or less cliff | `CLIFF_NY_START` / `CLIFF_NY_FULL`, layer thickness and depth ranges in `setup()` |
-| Longer scree | particles per cell, step limit (40) and the stop slope (0.06) in `simulate_scree()` |
+| Longer scree | `STEPS` (400 m) and the stop slope (0.06) in `simulate_scree()` |
+| More or less erosion | `DROPLETS`, `DROP_ERODE`, `DROP_CAPACITY`, `DROP_STEPS` in `river_land.gd` |
+| Finer rivers and maps | `A_STEP` / `NA` (5 m / 721; everything else is in metres) |
 | Road avoids rivers more | the `14·L` water cost in `_astar()` |
 | Flatter road | the `400·g²` grade cost, and `Route.MAX_GRADE` |
 | Autumn colours | palettes at the top of `river_ecology.gd` |
@@ -454,19 +485,14 @@ and prints the steepest 2 m step was used. It isn't kept in the repo.
 
 ## Known limitations
 
-- Rivers are on the 10 m grid, so they're at least ~10 m wide and their courses step
-  slightly. A finer water mesh or a river spline would fix it.
-- The cliff skin is built on the 5 m ground grid split 3×3, so strata steps are ~1.7 m
-  apart; the thinnest layers show as colour more than as shape.
-- The raised forest floor is on the 5 m grid: it lifts whole woods gently, not the
-  ground around each trunk.
+- Rivers are on the 5 m grid, so they're at least ~5 m wide.
 - The rider's camera can pass close to a tree trunk on a bend.
 - Some seeds may still give an odd road (a long detour, a crossing over itself). Check
   the map.
-- About 61k trees, 200k understory props, 180k ferns and 570k grass clumps (seed 7, 7.5 km
-  road). At 1080p on the dev box (RX 7900 XT): 561 fps average, 528 fps 1 % low, 0.56 GB
-  video memory, 0.46 GB RAM, 14 M triangles a frame. Not yet measured on the ride PC
-  (RTX 3060 Ti); expected well over 60 fps. Generation takes ~15 s and is single-threaded.
+- About 62k trees (each with a root mound), 280k understory props, 140k ferns and 550k
+  grass clumps (seed 7, 7.4 km road). At 1080p on the dev box (RX 7900 XT): 351 fps
+  average, 318 fps 1 % low, 0.93 GB video memory, 0.54 GB RAM, 24 M triangles a frame.
+  Expected on the ride PC (RTX 3060 Ti): roughly 120 fps. Not measured there yet.
 - The basin has many rivers, so the loop crosses water ~15 times, mostly small streams.
 
 ## References

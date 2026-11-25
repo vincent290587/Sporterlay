@@ -385,3 +385,23 @@ static func reeds_leaning(rng: RandomNumberGenerator) -> ArrayMesh:
 			b.tri_raw(j0, j1, j2)
 			b.tri_raw(j0, j2, j3)
 	return b.commit()
+
+
+## A low mound of soil for the foot of a tree, 2.4 m across the base and 0.45 m high,
+## its rim just under the ground. White: the instance colour is the ground's.
+static func mound() -> ArrayMesh:
+	var b := MeshBuilder.new()
+	var segs := 12
+	var top := b.add(Vector3(0.0, 0.45, 0.0), Vector3.UP, Color.WHITE)
+	var mid := PackedInt32Array()
+	var rim := PackedInt32Array()
+	for s in segs:
+		var a := TAU * s / segs
+		var d := Vector3(cos(a), 0.0, sin(a))
+		mid.append(b.add(d * 1.0 + Vector3(0.0, 0.3, 0.0), (d * 0.25 + Vector3.UP).normalized(), Color.WHITE))
+		rim.append(b.add(d * 2.4 + Vector3(0.0, -0.1, 0.0), (d * 0.15 + Vector3.UP).normalized(), Color.WHITE))
+	for s in segs:
+		var s2 := (s + 1) % segs
+		b.tri(top, mid[s], mid[s2])
+		b.quad(mid[s], rim[s], rim[s2], mid[s2])
+	return b.commit()

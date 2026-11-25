@@ -17,8 +17,9 @@ extends RefCounted
 ##               tall ones in the core, a band of young regrowth inside, smaller trees
 ##               higher up, a few dead trees in old forest.
 ##   influence   the trees' crowns are splatted into canopy maps: leaf litter or needles
-##               on the ground, the forest floor raised a little (roots hold the soil),
-##               ferns in the shade, mossy rocks around the conifers.
+##               on the ground, the forest floor raised a little, ferns in the shade,
+##               mossy rocks around the conifers; and every trunk stands on a small
+##               mound of soil its roots lifted.
 
 const TREE_CHUNK := 200.0
 const TREE_DETAIL := 900.0
@@ -26,6 +27,7 @@ const TREE_VISIBLE := 2200.0
 const SMALL_CHUNK := 64.0
 const SMALL_VISIBLE := 350.0
 const FERN_VISIBLE := 200.0
+const MOUND_VISIBLE := 250.0
 
 const TREE_PRIORITY_RADIUS := 1.0   # how close understory may grow to a trunk
 const TREE_RADIUS := 6.0            # trees' viability radius at size 1 (big trees keep more room)
@@ -141,8 +143,9 @@ func _viabilities(seed: int) -> void:
 			if e <= 0.0:
 				continue
 			# noise warped by the terrain normal: patches stretch along slopes
-			var nx := (land.ha[j * na + mini(i + 1, na - 1)] - land.ha[j * na + maxi(i - 1, 0)]) * 3.0
-			var nz := (land.ha[mini(j + 1, na - 1) * na + i] - land.ha[maxi(j - 1, 0) * na + i]) * 3.0
+			var warp := 30.0 / RiverLand.A_STEP   # pushes ~30 m per unit of gradient
+			var nx := (land.ha[j * na + mini(i + 1, na - 1)] - land.ha[j * na + maxi(i - 1, 0)]) * warp
+			var nz := (land.ha[mini(j + 1, na - 1) * na + i] - land.ha[maxi(j - 1, 0) * na + i]) * warp
 			var forest := land.forest[c]
 			var moist := land.moist[c]
 			var occl := land.occl[c]
@@ -296,13 +299,13 @@ func _canopy() -> void:
 	cc.resize(na * na)
 	for p: Array in placed:
 		var c := land.cell(p[0], p[1])
-		var crown: float = p[3] * 0.6
+		var crown: float = p[3] * 0.6 * 100.0 / (RiverLand.A_STEP * RiverLand.A_STEP)
 		if p[2] == PINE or p[2] == SPRUCE:
 			cc[c] += crown
 		elif p[2] != DEAD:
 			cb[c] += crown
-	cb = land._blur(cb, 1)
-	cc = land._blur(cc, 1)
+	cb = land.blur_m(cb, 10.0)
+	cc = land.blur_m(cc, 10.0)
 	for c in na * na:
 		land.canopy_broad[c] = clampf(cb[c] * 1.5, 0.0, 1.0)
 		land.canopy_conifer[c] = clampf(cc[c] * 1.5, 0.0, 1.0)
@@ -317,9 +320,15 @@ func build_trees(parent: Node3D, mat: Material) -> void:
 	var pine := Instancer.new(TREE_CHUNK)
 	var spruce := Instancer.new(TREE_CHUNK)
 	var dead := Instancer.new(TREE_CHUNK)
+	var mounds := Instancer.new(SMALL_CHUNK)
 	for p: Array in placed:
 		var pos := Vector3(p[0], land.height_at(p[0], p[1]), p[1])
 		var s: float = p[3]
+		# roots lift the soil around the trunk; the mound takes the ground's colour
+		if land.road_distance_at(pos.x, pos.z) > Route.HALF_WIDTH + 3.0:
+			var n := land.normal_at(pos.x, pos.z)
+			mounds.put(pos, rng.randf() * TAU, s * rng.randf_range(0.8, 1.1), s * rng.randf_range(0.7, 1.0),
+				land.vertex_color(pos.x, pos.z, pos.y, n.y, 999.0))
 		var yaw := rng.randf() * TAU
 		var tint := Color(1, 1, 1).darkened(rng.randf() * 0.12)
 		match int(p[2]):
@@ -342,7 +351,8 @@ func build_trees(parent: Node3D, mat: Material) -> void:
 	n += pine.build_lod(parent, Meshes.conifer(rng), Meshes.conifer_far(12.6, 3.4), mat, TREE_DETAIL, TREE_VISIBLE)
 	n += spruce.build_lod(parent, Meshes.conifer(rng, Meshes.SPRUCE_LAYERS), Meshes.conifer_far(16.0, 2.7), mat, TREE_DETAIL, TREE_VISIBLE)
 	n += dead.build(parent, Meshes.dead_tree(rng), mat, TREE_DETAIL, true)
-	print("  trees: ", n)
+	var nm := mounds.build(parent, Meshes.mound(), mat, MOUND_VISIBLE, false)
+	print("  trees: %d, root mounds: %d" % [n, nm])
 
 
 # --- understory --------------------------------------------------------------
@@ -374,8 +384,8 @@ func _layer(spacing: float, radius: float, chance: Callable, put: Callable) -> v
 		var expect := p * per_cell
 		var count := int(expect) + (1 if rng.randf() < expect - floorf(expect) else 0)
 		for _k in count:
-			var px := cx + rng.randf_range(-5.0, 5.0)
-			var pz := cz + rng.randf_range(-5.0, 5.0)
+			var px := cx + rng.randf_range(-0.5, 0.5) * RiverLand.A_STEP
+			var pz := cz + rng.randf_range(-0.5, 0.5) * RiverLand.A_STEP
 			if land.road_distance_at(px, pz) < Route.HALF_WIDTH + 1.5:
 				continue
 			if not trees.free_at(px, pz, true) or not under.free_at(px, pz, false):

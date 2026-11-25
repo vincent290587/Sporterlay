@@ -6,7 +6,7 @@ seed when a world loads, so there are no art assets in the repo.
 | World | `--world=` | What | Build time |
 |---|---|---|---|
 | Valley | `valley` | Green valley, snowy mountain ring, a wobbly loop. Pure noise. | ~1.6 s |
-| Riverlands | `riverlands` | Autumn river basin (3.6 km across, 7.5 km loop) shaped by simulated water, layered cliffs and scree, forests of competing species, a planned road with bridges and fences | ~15 s |
+| Riverlands | `riverlands` | Autumn river basin (3.6 km across, 7.5 km loop) shaped by simulated water, layered cliffs and scree, forests of competing species, a planned road with bridges and fences | ~30 s |
 
 F2 switches to the next world while riding.
 
@@ -21,7 +21,7 @@ freshwater, then rule-based biomes and layered placement):
    flow accumulation counts the uphill area. Valleys are cut in proportion to the
    flow, hollows mostly silt up into flats, and a second flood gives rivers (enough
    upstream area) and lakes (hollows deeper than 2 m).
-3. **Analysis maps** on a 10 m grid: slope, concavity, sun exposure, moisture,
+3. **Analysis maps** on a 5 m grid: slope, concavity, sun exposure, moisture,
    distance to water (and the nearest water level).
 4. **Biomes**: forest, conifer share (high and shady), wetland (by water, flat), heath
    (sunny and dry), alpine (high or steep), each 0..1; they colour the ground.

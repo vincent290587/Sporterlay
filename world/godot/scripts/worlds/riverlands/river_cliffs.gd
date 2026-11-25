@@ -7,7 +7,7 @@ extends RefCounted
 ##   strata    the land is sliced into horizontal layers of random thickness (1.2-4.5 m),
 ##             tilted by one of three dips per region; a blocky noise splits the cliffs
 ##             into two groups with different layer sets, so lines don't run on forever.
-##   skin      render-grid quads on steep ground, subdivided 3x3 (~1.7 m), each vertex
+##   skin      render-grid quads on steep ground, subdivided 5x5 (1 m), each vertex
 ##             pushed out along the slope by its layer's depth and some crag noise, faded
 ##             to nothing where the ground stops being steep.
 ##   colour    each layer has its colour; the terrain under and around the skin takes the
@@ -19,8 +19,9 @@ extends RefCounted
 
 const CLIFF_NY_START := 0.77    # normal.y where the skin starts
 const CLIFF_NY_FULL := 0.68     # and where it's fully out
-const SUB := 3                  # quad subdivision (~1.7 m)
+const SUB := 5                  # quad subdivision (1 m)
 const LEDGE_UP := 0.8           # face normal.y for a ledge
+const STEPS := int(400.0 / RiverLand.A_STEP)   # rock fall travels up to 400 m
 
 const ROCKS := [Color(0.74, 0.64, 0.50), Color(0.60, 0.57, 0.54), Color(0.68, 0.52, 0.44),
 	Color(0.50, 0.47, 0.45), Color(0.80, 0.72, 0.58)]
@@ -111,9 +112,9 @@ func simulate_scree(seed: int) -> void:
 		var x := -RiverLand.HALF + (c % na) * RiverLand.A_STEP
 		var z := -RiverLand.HALF + (c / na) * RiverLand.A_STEP
 		var col := color_at(x, land.ha[c], z)
-		for _p in 3:
+		for _p in 1:
 			var cur := c
-			for step in 40:
+			for step in STEPS:
 				var ci := cur % na
 				var cj := cur / na
 				# the lowest neighbour, sometimes the second lowest, so fans spread
@@ -137,7 +138,7 @@ func simulate_scree(seed: int) -> void:
 				cur = second if second >= 0 and rng.randf() < 0.35 else best
 				if land.wl[cur] != RiverLand.DRY:
 					break
-				var w := 1.0 - step / 40.0
+				var w := 1.0 - float(step) / STEPS
 				amount[cur] += w
 				cr[cur] += col.r * w
 				cg[cur] += col.g * w
@@ -147,18 +148,14 @@ func simulate_scree(seed: int) -> void:
 	for c in n:
 		if amount[c] > 0.0:
 			land.scree_col[c] = Color(cr[c] / amount[c], cg[c] / amount[c], cb[c] / amount[c])
-	var soft := land._blur(amount, 1)
+	var soft := land.blur_m(amount, 10.0)
 	for c in n:
 		# cliffs themselves are skin, not scree
 		land.scree[c] = clampf(soft[c] / 2.5, 0.0, 1.0) * (1.0 - smoothstep(0.22, 0.3, land.slope[c]))
 		if amount[c] <= 0.0 and land.scree[c] > 0.0:
-			# blurred into a cell no particle reached: borrow a neighbour's colour
-			for d in 8:
-				var ni: int = c % na + RiverLand.DX[d]
-				var nj: int = c / na + RiverLand.DZ[d]
-				if ni >= 0 and nj >= 0 and ni < na and nj < na and amount[nj * na + ni] > 0.0:
-					land.scree_col[c] = land.scree_col[nj * na + ni]
-					break
+			# blurred into a cell no rock reached: the layer it sits on
+			land.scree_col[c] = color_at(-RiverLand.HALF + (c % na) * RiverLand.A_STEP, land.ha[c],
+				-RiverLand.HALF + (c / na) * RiverLand.A_STEP)
 
 
 ## How far out of steep (0) or fully cliff (1) a render vertex is.

@@ -75,9 +75,9 @@ static func _reeds(parent: Node3D, land: RiverLand, rng: RandomNumberGenerator, 
 		if absf(cx) > RiverLand.HALF - 300.0 or absf(cz) > RiverLand.HALF - 300.0:
 			continue
 		var level := land.wnear[c]
-		for _k in 4:
-			var x := cx + rng.randf_range(-5.0, 5.0)
-			var z := cz + rng.randf_range(-5.0, 5.0)
+		for _k in maxi(1, int(4.0 * RiverLand.A_STEP * RiverLand.A_STEP / 100.0)):
+			var x := cx + rng.randf_range(-0.5, 0.5) * RiverLand.A_STEP
+			var z := cz + rng.randf_range(-0.5, 0.5) * RiverLand.A_STEP
 			var h := land.height_at(x, z)
 			if h < level - 0.7 or h > level + 0.9 or land.road_distance_at(x, z) < Route.HALF_WIDTH + 1.0:
 				continue

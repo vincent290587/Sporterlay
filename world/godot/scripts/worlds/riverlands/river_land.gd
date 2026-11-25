@@ -1,7 +1,8 @@
 class_name RiverLand
 extends RefCounted
 ## Riverlands terrain, built in the order big open-world pipelines use:
-##   1. a base height field (warped hills, a basin tilted towards an outlet, mountains);
+##   1. a base height field (warped hills, a basin tilted towards an outlet, mountains),
+##      worn by droplet erosion (gullies, fans);
 ##   2. freshwater: where rain would run (priority flood + flow accumulation), which
 ##      carves valleys, then rivers and lakes from a second pass;
 ##   3. analysis maps on a 10 m grid: slope, concavity, sun exposure, moisture,
@@ -10,16 +11,25 @@ extends RefCounted
 ##      read by the scatter and by the ground colours.
 
 const HALF := 1800.0
-const A_STEP := 10.0          # analysis grid
-const NA := 361
+const A_STEP := 5.0           # analysis grid (m)
+const NA := 721
 const STEP := 5.0             # render grid
 const N := 721
 const FAR := 10000.0
 const SKIRT_LEVELS := 36
 const ROAD_REACH := 48.0
-const RIVER_ACC := 450.0      # 10 m cells draining through a cell before it's a river (0.045 km²)
+const RIVER_ACC := 450.0      # upstream area (in 100 m² units) before a cell is a river: 0.045 km²
 const LAKE_DEPTH := 2.0       # shallower hollows silt up into flats
 const SILT := 0.8             # how much of each hollow fills with sediment
+const DROPLETS := 150000      # erosion: rain drops, and how each one behaves
+const DROP_STEPS := 60
+const DROP_INERTIA := 0.05
+const DROP_CAPACITY := 4.0
+const DROP_MIN_SLOPE := 0.01
+const DROP_DEPOSIT := 0.3
+const DROP_ERODE := 0.3
+const DROP_GRAVITY := 4.0
+const DROP_EVAPORATE := 0.02
 const DRY := -1e9
 const SUN_PITCH := -30.0
 const SUN_YAW := -60.0
@@ -140,6 +150,9 @@ func build() -> void:
 		for i in NA:
 			h0[j * NA + i] = base(_ax(i), _ax(j))
 
+	_erode(h0, int(hills.seed))
+	print("  erosion: %d ms" % (Time.get_ticks_msec() - t))
+
 	# 1st pass: let the water carve valleys; hollows mostly silt up into flat plains
 	var flood := _flood(h0)
 	var a0 := _accumulate(flood)
@@ -148,7 +161,7 @@ func build() -> void:
 	inc.resize(n)
 	for c in n:
 		inc[c] = minf(24.0, 3.2 * log(1.0 + a0[c] / 6.0))
-	inc = _blur(_blur(inc, 2), 2)
+	inc = blur_m(blur_m(inc, 20.0), 20.0)
 	var h1 := PackedFloat32Array()
 	h1.resize(n)
 	for j in NA:
@@ -194,6 +207,89 @@ func build() -> void:
 
 	_analyse()
 	print("  analysis and biomes: %d ms" % (Time.get_ticks_msec() - t))
+
+
+## Droplet erosion: rain drops start at random, run downhill with a little inertia,
+## pick up sediment while they speed up (up to a capacity that grows with slope, speed
+## and water) and drop it when they slow down or overflow, then evaporate. That cuts
+## gullies into the slopes and leaves fans where they flatten out. The change is
+## softened once before it's applied, to keep it from pitting single cells.
+func _erode(h: PackedFloat32Array, seed: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed + 7
+	var before := h.duplicate()
+	for _d in DROPLETS:
+		var px := rng.randf_range(1.0, NA - 2.0)
+		var pz := rng.randf_range(1.0, NA - 2.0)
+		if _edge(-HALF + px * A_STEP, -HALF + pz * A_STEP) > 0.0:
+			continue
+		var dx := 0.0
+		var dz := 0.0
+		var speed := 1.0
+		var water := 1.0
+		var sediment := 0.0
+		for _s in DROP_STEPS:
+			var i := int(px)
+			var j := int(pz)
+			var u := px - i
+			var v := pz - j
+			var k := j * NA + i
+			var h00 := h[k]
+			var h10 := h[k + 1]
+			var h01 := h[k + NA]
+			var h11 := h[k + NA + 1]
+			var gx := (h10 - h00) * (1.0 - v) + (h11 - h01) * v
+			var gz := (h01 - h00) * (1.0 - u) + (h11 - h10) * u
+			var here := lerpf(lerpf(h00, h10, u), lerpf(h01, h11, u), v)
+			dx = dx * DROP_INERTIA - gx * (1.0 - DROP_INERTIA)
+			dz = dz * DROP_INERTIA - gz * (1.0 - DROP_INERTIA)
+			var l := sqrt(dx * dx + dz * dz)
+			if l < 1e-6:
+				break
+			dx /= l
+			dz /= l
+			var nx := px + dx
+			var nz := pz + dz
+			if nx < 1.0 or nz < 1.0 or nx >= NA - 2.0 or nz >= NA - 2.0:
+				break
+			var ni := int(nx)
+			var nj := int(nz)
+			var nk := nj * NA + ni
+			var nu := nx - ni
+			var nv := nz - nj
+			var there := lerpf(lerpf(h[nk], h[nk + 1], nu), lerpf(h[nk + NA], h[nk + NA + 1], nu), nv)
+			var dh := there - here
+			var cap := maxf(-dh, DROP_MIN_SLOPE) * speed * water * DROP_CAPACITY
+			var w00 := (1.0 - u) * (1.0 - v)
+			var w10 := u * (1.0 - v)
+			var w01 := (1.0 - u) * v
+			var w11 := u * v
+			if sediment > cap or dh > 0.0:
+				# uphill: fill the pit behind; overloaded: drop some
+				var drop := minf(dh, sediment) if dh > 0.0 else (sediment - cap) * DROP_DEPOSIT
+				sediment -= drop
+				h[k] += drop * w00
+				h[k + 1] += drop * w10
+				h[k + NA] += drop * w01
+				h[k + NA + 1] += drop * w11
+			else:
+				var take := minf((cap - sediment) * DROP_ERODE, -dh)
+				sediment += take
+				h[k] -= take * w00
+				h[k + 1] -= take * w10
+				h[k + NA] -= take * w01
+				h[k + NA + 1] -= take * w11
+			speed = sqrt(maxf(0.0, speed * speed - dh * DROP_GRAVITY))
+			water *= 1.0 - DROP_EVAPORATE
+			px = nx
+			pz = nz
+	var change := PackedFloat32Array()
+	change.resize(NA * NA)
+	for c in NA * NA:
+		change[c] = h[c] - before[c]
+	change = _blur(change, 1)
+	for c in NA * NA:
+		h[c] = before[c] + change[c]
 
 
 ## Lake cells (hollows filled deeper than LAKE_DEPTH), dropping every lake that reaches
@@ -276,12 +372,17 @@ func _accumulate(flood: Dictionary) -> PackedFloat32Array:
 	var parent: PackedInt32Array = flood.parent
 	var a := PackedFloat32Array()
 	a.resize(NA * NA)
-	a.fill(1.0)
+	a.fill(A_STEP * A_STEP / 100.0)   # each cell's own rain, as area in 100 m² units
 	for k in range(order.size() - 1, -1, -1):
 		var c := order[k]
 		if parent[c] >= 0:
 			a[parent[c]] += a[c]
 	return a
+
+
+## Box blur of radius `metres`.
+func blur_m(src: PackedFloat32Array, metres: float) -> PackedFloat32Array:
+	return _blur(src, maxi(1, int(round(metres / A_STEP))))
 
 
 ## Box blur of radius r cells, separable.
@@ -345,7 +446,7 @@ func _analyse() -> void:
 			_relax(i, j, i + 1, j + 1, diag)
 			_relax(i, j, i - 1, j + 1, diag)
 
-	var smooth := _blur(_blur(ha, 6), 6)
+	var smooth := blur_m(blur_m(ha, 60.0), 60.0)
 	for j in NA:
 		for i in NA:
 			var c := j * NA + i
@@ -388,7 +489,7 @@ func _occlusion() -> void:
 	var half := (NA + 1) / 2
 	var coarse := PackedFloat32Array()
 	coarse.resize(half * half)
-	var dists := [1.5, 3.5, 7.0, 14.0]   # in cells
+	var dists := [15.0 / A_STEP, 35.0 / A_STEP, 70.0 / A_STEP, 140.0 / A_STEP]   # in cells
 	for hj in half:
 		for hi in half:
 			var i := mini(hi * 2, NA - 1)
@@ -423,7 +524,7 @@ func _wind() -> void:
 	wind_x.resize(n)
 	wind_z.resize(n)
 	var base := Vector2(0.8, 0.6).normalized()
-	var broad := _blur(_blur(ha, 8), 8)
+	var broad := blur_m(blur_m(ha, 80.0), 80.0)
 	for j in NA:
 		for i in NA:
 			var c := j * NA + i
@@ -452,7 +553,8 @@ func water_dir(x: float, z: float) -> Vector2:
 
 
 ## Soil held together by roots: the forest floor sits a little higher than the meadow
-## (up to 0.7 m where the canopy is thickest), except along the road and by water.
+## (up to 0.3 m where the canopy is thickest), except along the road and by water. Each
+## trunk also gets its own mound (RiverEcology.build_trees).
 func deform_under_trees() -> void:
 	for j in N:
 		var z := _rx(j)
@@ -463,7 +565,7 @@ func deform_under_trees() -> void:
 			if cover <= 0.01:
 				continue
 			var keep := smoothstep(Route.HALF_WIDTH + 4.0, Route.HALF_WIDTH + 14.0, road_d[k]) * smoothstep(6.0, 18.0, field(dw, x, z))
-			heights[k] += 0.7 * cover * keep
+			heights[k] += 0.3 * cover * keep
 
 
 func _relax(i: int, j: int, ni: int, nj: int, cost: float) -> void:
