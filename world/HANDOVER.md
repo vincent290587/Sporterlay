@@ -49,7 +49,9 @@ A level-of-detail manager holds the frame rate. It cuts the least important thin
 2. Download **Godot 4.7.2 standard** (not .NET) for Windows from godotengine.org. It's a
    single exe; put it in e.g. `C:\Tools\Godot\`. No install, and no export templates
    needed to run.
-3. Open a terminal in the Sporterlay folder and run the benchmark:
+3. Import the project once, or the window stays black (see `world/godot/README.md`):
+   `Godot_v4.7.2-stable_win64_console.exe --headless --path world/godot --import`.
+   Then run the benchmark from a terminal in the Sporterlay folder:
    ```
    C:\Tools\Godot\Godot_v4.7.2-stable_win64.exe --path world/godot -- --world=riverlands --bench=60
    ```
@@ -100,8 +102,9 @@ All go after `--` on the command line:
 
 ## Open items
 
-- **Not yet measured on the Sports PC:** frame rate, the HUD on top, and the world's
-  build time on the 13700K.
+- **Measured on the Sports PC (2026-11-25):** Riverlands at 1080p "high", every detail
+  at 1.00: 110 fps on average, 1% low 91 fps, 9.7 ms p95, 774 MB VRAM. It builds in 53 s.
+  Still to check: whether the HUD stays on top.
 - **No standalone exe yet.** In the Godot editor: Project → Export → Windows Desktop
   (it downloads export templates the first time). The preset is ready and writes
   `world/godot/build/SporterlayWorld.exe`.

@@ -61,9 +61,13 @@ Sporterlay ──UDP 127.0.0.1:47810, 4 Hz──▶ PowerLink ──▶ Rider (o
 ## Running
 
 1. Download Godot 4.7 (standard, not .NET) from godotengine.org. It's a single exe.
-2. Open `project.godot` in it and press Play (F5), or from a shell:
+2. On a fresh checkout, import the project once (or open it in the editor once):
+   `Godot_v4.7.2-stable_win64_console.exe --headless --path world/godot --import`.
+   `.godot/` is not in git, and without it Godot doesn't know the global class names
+   (`RiverWorld`, `Rider`, `Lod`…): `main.gd` fails to parse and the window stays black.
+3. Open `project.godot` in it and press Play (F5), or from a shell:
    `Godot_v4.7.2-stable_win64.exe --path world/godot`
-3. In Sporterlay: tray → Extras → *Send power to the virtual world*.
+4. In Sporterlay: tray → Extras → *Send power to the virtual world*.
 
 Keys: **Esc** quit, **H** hide the status line, **F3** frame rate, **F4** detail levels, **F2** next world, **F11** fullscreen/windowed,
 **Up/Down** manual power while Sporterlay isn't sending.
