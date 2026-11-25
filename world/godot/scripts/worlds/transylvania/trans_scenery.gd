@@ -99,8 +99,8 @@ static func _trees(parent: Node3D, land: TransLand, rng: RandomNumberGenerator, 
 			var hollow := 1.0 - smoothstep(TransLand.MIST - 6.0, TransLand.MIST + 8.0, h)
 			var kind := SPRUCE_T
 			var r := rng.randf()
-			if r < 0.05 + near_castle * 0.45 + hollow * 0.18:
-				kind = DEAD_T if rng.randf() < 0.55 else TWISTED_T
+			if r < 0.10 + near_castle * 0.5 + hollow * 0.35:
+				kind = DEAD_T if rng.randf() < 0.65 else TWISTED_T
 			else:
 				var beech := smoothstep(-0.2, 0.3, mix.get_noise_2d(px, pz)) * (1.0 - smoothstep(10.0, 90.0, h))
 				if rng.randf() < beech * 0.85:

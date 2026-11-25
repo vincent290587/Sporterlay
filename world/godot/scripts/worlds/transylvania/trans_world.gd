@@ -18,6 +18,9 @@ func build(parent: Node3D, seed: int) -> void:
 		return TransLand.WATER + 1.5)
 	land.carve(route)
 	castle_s = _nearest_s(land.loop[land.castle_i])
+	var castle := TransCastle.new()
+	castle.setup(route, castle_s, seed)
+	castle.level(land)
 
 	# the moon behind the castle as seen from the climb; the sun went down off to the side
 	var c := route.position_at(castle_s)
@@ -47,7 +50,8 @@ func build(parent: Node3D, seed: int) -> void:
 		"glow_bloom": 0.05,
 		"shadow_distance": 250.0,
 	})
-	TransScenery.build(parent, land, route, seed)
+	TransScenery.build(parent, land, route, seed, castle.blocks)
+	castle.build(parent)
 
 
 func _nearest_s(p: Vector2) -> float:

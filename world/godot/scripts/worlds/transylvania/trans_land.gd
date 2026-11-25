@@ -160,9 +160,10 @@ func natural(x: float, z: float) -> float:
 	var h := hills.get_noise_2d(x, z) * 34.0 + detail.get_noise_2d(x, z) * 2.0
 	var r := _ridge_at(x, z)
 	if r > 0.0:
-		# broken rock on the steep flanks, none on the flat top
+		# the ridge replaces the hills as it rises, so the spine follows climb_at() and
+		# the road never dips on the way up; broken rock on the flanks, not on top
 		var rough := smoothstep(4.0, 30.0, CLIMB - r) * smoothstep(0.0, 20.0, r)
-		h += r + crag.get_noise_2d(x, z) * 5.0 * rough
+		h = lerpf(h, maxf(h, r), smoothstep(0.0, 30.0, r)) + crag.get_noise_2d(x, z) * 5.0 * rough
 	# the Carpathians all round: high, jagged, snow on the tops
 	var m := smoothstep(1900.0, 4200.0, Vector2(x, z).length())
 	if m > 0.0:
