@@ -177,8 +177,8 @@ and the trees are `TreeGen` models drawn at 10x normal size on the islands.
   grain, staggered joints, knots, nails, gaps and mossy edges, faded with distance),
   posts and railings in varied shades, 10x trees with LOD tiers, and reeds along the
   shore and in the shallows. Patches of normal tall grass grow on the island ground
-  within ~160 m of the boardwalk, and giant ferns (`Meshes.fern` at ~15x: 7-16 m across,
-  6-10 m tall, casting shadows) in clumps round the land trees and in wooded stretches
+  within ~160 m of the boardwalk, and giant ferns (`Meshes.fern` at 8-28x: ~12-55 m across,
+  ~7-35 m tall, mostly mid-size, casting shadows) in clumps round the land trees and in wooded stretches
   beside the boardwalk; the grass shader's `sink` lets them sink fully out of sight by
   their fade distance.
 - The road follows the land, but is lifted to `WATER + 1.4` over water; the deck is

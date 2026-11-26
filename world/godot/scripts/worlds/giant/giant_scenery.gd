@@ -28,12 +28,16 @@ const LILY_LIGHT := Color(0.40, 0.62, 0.26)
 const FLOWER_WHITE := Color(1.0, 0.96, 0.92)
 const FLOWER_PINK := Color(1.0, 0.68, 0.76)
 
-const GRASS_CHUNK := 16.0
-const GRASS_VISIBLE := 170.0
-const GRASS_REACH := 160.0        # grass patches out to here from the road
-const GRASS_DENSITY := 0.9        # clumps per m² of a patch (denser in its middle)
+const GRASS_CHUNK := 32.0
+const GRASS_VISIBLE := 210.0
+const GRASS_REACH := 200.0        # m from the road
+const GRASS_PER_SAMPLE := 210     # clumps tried per 2 m of road, both sides (as in the valley)
+const GRASS_FAR_REACH := 480.0    # far grass (3x clumps, sparser) from GRASS_REACH out to here
+const GRASS_FAR_PER_SAMPLE := 70
+const GRASS_FAR_CHUNK := 64.0
+const GRASS_FAR_VISIBLE := 520.0
 const FERNS_CHUNK := 100.0
-const FERNS_VISIBLE := 500.0
+const FERNS_VISIBLE := 800.0
 
 const WOOD := Color(0.52, 0.38, 0.25)
 const RUST := Color(0.64, 0.40, 0.24)
@@ -67,14 +71,20 @@ static func build(parent: Node3D, land: GiantLand, route: Route, seed: int, sun:
 
 	var tall_grass_mat := ShaderMaterial.new()
 	tall_grass_mat.shader = GRASS
-	Lod.add_param("grass", tall_grass_mat, "fade_start", 130.0)
-	Lod.add_param("grass", tall_grass_mat, "fade_end", 190.0)
+	Lod.add_param("grass", tall_grass_mat, "fade_start", 150.0)
+	Lod.add_param("grass", tall_grass_mat, "fade_end", 205.0)
+
+	var far_grass_mat := ShaderMaterial.new()
+	far_grass_mat.shader = GRASS
+	Lod.add_param("grass", far_grass_mat, "fade_start", 440.0)
+	Lod.add_param("grass", far_grass_mat, "fade_end", 515.0)
+	far_grass_mat.set_shader_parameter("sink", 3.0)
 
 	var fern_mat := ShaderMaterial.new()
 	fern_mat.shader = GRASS
-	Lod.add_param("ferns", fern_mat, "fade_start", 360.0)
-	Lod.add_param("ferns", fern_mat, "fade_end", 500.0)
-	fern_mat.set_shader_parameter("sink", 11.0)   # they're up to 10 m tall
+	Lod.add_param("ferns", fern_mat, "fade_start", 620.0)
+	Lod.add_param("ferns", fern_mat, "fade_end", 790.0)
+	fern_mat.set_shader_parameter("sink", 36.0)   # they're up to ~35 m tall
 
 	_index_road(route)
 	var rng := RandomNumberGenerator.new()
@@ -83,7 +93,7 @@ static func build(parent: Node3D, land: GiantLand, route: Route, seed: int, sun:
 	_reeds(parent, land, route, rng, grass_mat)
 	_piers(parent, land, route, rng, toon)
 	_lily_pads(parent, land, route, rng, toon)
-	_tall_grass(parent, land, route, rng, tall_grass_mat)   # after the rest, so their layout stays
+	_tall_grass(parent, land, route, rng, tall_grass_mat, far_grass_mat)   # after the rest, so their layout stays
 	_giant_ferns(parent, land, route, rng, fern_mat)
 
 
@@ -357,50 +367,57 @@ static func _reeds(parent: Node3D, land: GiantLand, route: Route,
 		inst.put(Vector3(px, h, pz), rng.randf() * TAU, rng.randf_range(0.8, 1.35), rng.randf_range(1.2, 2.1), tint)
 	print("  reeds: ", inst.build(parent, Meshes.reeds_leaning(rng), mat, REEDS_VISIBLE, false, 0.0, "reeds"))
 
-## Tall grass on the islands: normal-size clumps in patches (patch noise), spread
-## over the land within sight of the boardwalk, thicker near it, off the shore band,
-## steep ground and the road.
+## Tall grass on the islands: a carpet of normal-size clumps over the island ground
+## within GRASS_REACH of the boardwalk (thinning out with distance, like the valley's),
+## taller in patches (noise), off the shore band, steep ground and the road.
 static func _tall_grass(parent: Node3D, land: GiantLand, route: Route,
-		rng: RandomNumberGenerator, mat: Material) -> void:
+		rng: RandomNumberGenerator, mat: Material, far_mat: Material) -> void:
 	var inst := Instancer.new(GRASS_CHUNK)
+	var far := Instancer.new(GRASS_FAR_CHUNK)
 	var patches := FastNoiseLite.new()
 	patches.seed = seed_for(rng)
 	patches.frequency = 0.03
 	patches.fractal_octaves = 2
 	var hw := Route.HALF_WIDTH
-	var patch_count := 0
-	for m in range(0, route.count(), 3):
+	for m in route.count():
 		var p := route.points[m]
 		var t := route.tangent_index(m)
 		var right := Vector3(-t.z, 0.0, t.x)
-		for _s in 3:
-			var off := (hw + 2.0 + (GRASS_REACH - hw - 2.0) * pow(rng.randf(), 1.5)) * (1.0 if rng.randf() < 0.5 else -1.0)
-			var along := rng.randf_range(-3.0, 3.0)
-			var cx := p.x + right.x * off + t.x * along
-			var cz := p.z + right.z * off + t.z * along
-			if not _grass_ground(land, cx, cz):
+		for _k in GRASS_PER_SAMPLE:
+			var u := rng.randf_range(-1.0, 1.0)
+			var side := hw + 1.0 + u * u * GRASS_REACH
+			var px := p.x + t.x * rng.randf_range(-1.0, 1.0) + right.x * side * signf(u)
+			var pz := p.z + t.z * rng.randf_range(-1.0, 1.0) + right.z * side * signf(u)
+			var h := land.natural(px, pz)
+			if h < GiantLand.WATER + 1.0 or h > 30.0:
 				continue
-			var dense := smoothstep(-0.1, 0.35, patches.get_noise_2d(cx, cz))
-			if rng.randf() > dense * 0.85 + 0.05:
+			var ny := _ground_ny(land, px, pz)
+			if ny < 0.78:
 				continue
-			patch_count += 1
-			var radius := rng.randf_range(4.0, 10.0)
-			for _c in int(PI * radius * radius * GRASS_DENSITY):
-				var dist := radius * rng.randf() * rng.randf()   # denser in the middle
-				var a := rng.randf() * TAU
-				var px := cx + cos(a) * dist
-				var pz := cz + sin(a) * dist
-				if not _grass_ground(land, px, pz):
-					continue
-				if _road_distance(route, px, pz) < hw + 1.0:
-					continue
-				var hc := land.natural(px, pz)
-				var tint := land.color_at(px, pz, hc, _ground_ny(land, px, pz))
-				tint = tint.lerp(Color(0.42, 0.66, 0.30), 0.65).darkened(rng.randf() * 0.12)
-				inst.put(Vector3(px, hc, pz), rng.randf() * TAU,
-					rng.randf_range(0.8, 1.3), rng.randf_range(0.8, 1.1), tint)
-	print("  grass: ", inst.build(parent, Meshes.grass(rng, Meshes.GRASS_TALL), mat, GRASS_VISIBLE, false, 0.0, "grass"),
-		" in ", patch_count, " patches")
+			if _road_distance(route, px, pz) < hw + 1.0:
+				continue
+			var tall := smoothstep(-0.3, 0.4, patches.get_noise_2d(px, pz))
+			var tint := land.color_at(px, pz, h, ny).lerp(Color(0.42, 0.66, 0.30), 0.5).darkened(rng.randf() * 0.12)
+			inst.put(Vector3(px, h, pz), rng.randf() * TAU,
+				rng.randf_range(0.8, 1.3), lerpf(0.6, 1.2, tall) * rng.randf_range(0.85, 1.1), tint)
+		# beyond the near grass: fewer, bigger clumps, so the far islands aren't bare lawn
+		for _k in GRASS_FAR_PER_SAMPLE:
+			var side := rng.randf_range(GRASS_REACH - 20.0, GRASS_FAR_REACH) * (1.0 if rng.randf() < 0.5 else -1.0)
+			var px := p.x + t.x * rng.randf_range(-1.0, 1.0) + right.x * side
+			var pz := p.z + t.z * rng.randf_range(-1.0, 1.0) + right.z * side
+			var h := land.natural(px, pz)
+			if h < GiantLand.WATER + 1.0 or h > 30.0:
+				continue
+			var ny := _ground_ny(land, px, pz)
+			if ny < 0.78:
+				continue
+			var tall := smoothstep(-0.3, 0.4, patches.get_noise_2d(px, pz))
+			var tint := land.color_at(px, pz, h, ny).lerp(Color(0.42, 0.66, 0.30), 0.5).darkened(rng.randf() * 0.12)
+			far.put(Vector3(px, h, pz), rng.randf() * TAU,
+				rng.randf_range(2.6, 3.4), lerpf(0.7, 1.3, tall) * rng.randf_range(0.85, 1.1), tint)
+	var mesh := Meshes.grass(rng, Meshes.GRASS_TALL)
+	print("  grass: ", inst.build(parent, mesh, mat, GRASS_VISIBLE, false, 0.0, "grass"),
+		" near, ", far.build(parent, mesh, far_mat, GRASS_FAR_VISIBLE, false, GRASS_VISIBLE - 30.0, "grass"), " far")
 
 
 ## Green island ground for grass and ferns: above the reeds' shore band, below the
@@ -420,14 +437,14 @@ static func _ground_ny(land: GiantLand, x: float, z: float) -> float:
 	return (2.0 * e) / sqrt(nx * nx + nz * nz + 4.0 * e * e)
 
 
-## Giant ferns: `Meshes.fern` at ~15x (7-16 m across, 6-10 m tall), in clumps round
+## Giant ferns: `Meshes.fern` at 8-28x (~12-55 m across, ~7-35 m tall, mostly mid-size), in clumps round
 ## and under the giant land trees (`_land_trees`), and in wooded stretches beside the
 ## boardwalk (the 10x trees mostly stand far from it), clear of it by their fronds' reach.
 static func _giant_ferns(parent: Node3D, land: GiantLand, route: Route,
 		rng: RandomNumberGenerator, mat: Material) -> void:
 	var inst := Instancer.new(FERNS_CHUNK)
 	for tree: Vector3 in _land_trees:   # x, z, scale
-		_fern_clump(inst, land, route, rng, Vector2(tree.x, tree.y), tree.z * 0.6, tree.z * 3.4, rng.randi_range(10, 24))
+		_fern_clump(inst, land, route, rng, Vector2(tree.x, tree.y), tree.z * 0.8, tree.z * 4.0, rng.randi_range(6, 14))
 	var forest := FastNoiseLite.new()
 	forest.seed = seed_for(rng)
 	forest.frequency = 0.006
@@ -438,13 +455,13 @@ static func _giant_ferns(parent: Node3D, land: GiantLand, route: Route,
 		var t := route.tangent_index(m)
 		var right := Vector3(-t.z, 0.0, t.x)
 		for sgn: float in [-1.0, 1.0]:
-			var off := hw + rng.randf_range(10.0, 110.0)
+			var off := hw + rng.randf_range(20.0, 140.0)
 			var c := Vector2(p.x + right.x * sgn * off, p.z + right.z * sgn * off)
 			if not _grass_ground(land, c.x, c.y, 0.72):
 				continue
 			if rng.randf() > smoothstep(0.12, 0.45, forest.get_noise_2d(c.x, c.y)) * 0.85 + 0.08:
 				continue
-			_fern_clump(inst, land, route, rng, c, 0.0, rng.randf_range(4.0, 14.0), rng.randi_range(4, 12))
+			_fern_clump(inst, land, route, rng, c, 0.0, rng.randf_range(10.0, 30.0), rng.randi_range(3, 8))
 	print("  giant ferns: ", inst.build(parent, Meshes.fern(rng), mat, FERNS_VISIBLE, true, 0.0, "ferns"))
 
 
@@ -458,8 +475,9 @@ static func _fern_clump(inst: Instancer, land: GiantLand, route: Route, rng: Ran
 		var pz := c.y + sin(a) * dist
 		if not _grass_ground(land, px, pz, 0.72):
 			continue
-		var sxz := rng.randf_range(6.0, 9.0)
-		var sy := rng.randf_range(14.0, 22.0)
+		var k := 8.0 + 20.0 * pow(rng.randf(), 1.6)   # mostly mid-size, a few huge
+		var sxz := k * rng.randf_range(0.85, 1.15)
+		var sy := k * rng.randf_range(1.8, 2.8)
 		if _road_distance(route, px, pz) < Route.HALF_WIDTH + sxz * 0.9 + 1.0:
 			continue
 		var tint := Color(0.26, 0.45, 0.18).lerp(Color(0.48, 0.72, 0.32), rng.randf())
