@@ -23,8 +23,8 @@ const LILY_VISIBLE := 300.0
 const LILY_CHUNK := 24.0
 const LILY_MIN_DEPTH := 0.3        # shallow water, m below the surface
 const LILY_MAX_DEPTH := 3.0
-const LILY_DARK := Color(0.30, 0.52, 0.22)
-const LILY_LIGHT := Color(0.72, 0.92, 0.46)
+const LILY_DARK := Color(0.44, 0.68, 0.24)
+const LILY_LIGHT := Color(0.86, 1.0, 0.46)
 const FLOWER_WHITE := Color(1.0, 0.96, 0.92)
 const FLOWER_PINK := Color(1.0, 0.68, 0.76)
 
@@ -336,7 +336,7 @@ static func _reeds(parent: Node3D, land: GiantLand, route: Route,
 
 ## Lily pads in calm shallow water: flat discs with a wedge-shaped notch, a few
 ## darker/lighter green tints, and a small white/pink flower on about 5 % of them.
-## Clustered by a patch noise field, kept off the boardwalk. Unit pad radius 0.5,
+## Dense mats around cluster centres, kept off the boardwalk. Unit pad radius 0.5,
 ## so the instance's x/z scale is the pad's width in metres.
 static func _pad_mesh(rng: RandomNumberGenerator) -> ArrayMesh:
 	var b := MeshBuilder.new()
@@ -386,7 +386,32 @@ static func _lily_pads(parent: Node3D, land: GiantLand, route: Route,
 	patch.fractal_octaves = 3
 	var pad_mesh := _pad_mesh(rng)
 	var bloom_mesh := _lily_flower_mesh(rng)
-	for _k in 90000:
+
+	# cluster centres in shallow water along the boardwalk, only where the
+	# patch noise makes a zone, so mats don't line the whole shore
+	var centres := PackedVector2Array()
+	var n := route.count()
+	for m in range(0, n, 16):
+		var p := route.points[m]
+		var t := route.tangent_index(m)
+		var right := Vector3(-t.z, 0.0, t.x)
+		for sgn: float in [-1.0, 1.0]:
+			var off := rng.randf_range(8.0, 150.0)
+			var px := p.x + right.x * sgn * off
+			var pz := p.z + right.z * sgn * off
+			var h := land.natural(px, pz)
+			var depth := GiantLand.WATER - h
+			if depth < LILY_MIN_DEPTH or depth > LILY_MAX_DEPTH:
+				continue
+			if _road_distance(route, px, pz) < Route.HALF_WIDTH + 1.5:
+				continue
+			var zone := patch.get_noise_2d(px, pz) * 0.5 + 0.5
+			if zone < 0.38:
+				continue
+			centres.append(Vector2(px, pz))
+
+	# a few loose centres out in the open shallows
+	for _k in 50:
 		var px := rng.randf_range(-GiantLand.HALF + 40.0, GiantLand.HALF - 40.0)
 		var pz := rng.randf_range(-GiantLand.HALF + 40.0, GiantLand.HALF - 40.0)
 		var h := land.natural(px, pz)
@@ -395,18 +420,34 @@ static func _lily_pads(parent: Node3D, land: GiantLand, route: Route,
 			continue
 		if _road_distance(route, px, pz) < Route.HALF_WIDTH + 1.5:
 			continue
-		var cluster := patch.get_noise_2d(px, pz) * 0.5 + 0.5
-		if cluster < 0.52:
-			continue
-		var size := rng.randf_range(0.6, 1.6)   # width across, m
-		var tint := LILY_DARK.lerp(LILY_LIGHT, rng.randf())
-		tint = tint.darkened(rng.randf() * 0.16)
-		var pos := Vector3(px, GiantLand.WATER + 0.045, pz)
-		pads.put(pos, rng.randf() * TAU, size, 1.0, tint)
-		if rng.randf() < 0.05:
-			var flower_tint := FLOWER_WHITE.lerp(FLOWER_PINK, rng.randf())
-			blooms.put(pos + Vector3(0.0, 0.02, 0.0), rng.randf() * TAU,
-				size * 0.22, 0.7, flower_tint)
+		centres.append(Vector2(px, pz))
+
+	# dense mats around each centre, fading towards the edge
+	for c: Vector2 in centres:
+		var radius := rng.randf_range(2.0, 12.5)   # patch diameter 4-25 m
+		var target := maxi(4, int(PI * radius * radius * rng.randf_range(0.45, 0.75) / 0.9))
+		for _p in target:
+			var dist := radius * rng.randf() * rng.randf()   # denser in the middle
+			var a := rng.randf() * TAU
+			var px := c.x + cos(a) * dist
+			var pz := c.y + sin(a) * dist
+			var h := land.natural(px, pz)
+			var depth := GiantLand.WATER - h
+			if depth < LILY_MIN_DEPTH or depth > LILY_MAX_DEPTH:
+				continue
+			if _road_distance(route, px, pz) < Route.HALF_WIDTH + 1.5:
+				continue
+			var size := rng.randf_range(0.6, 1.6)   # width across, m
+			var tint := LILY_DARK.lerp(LILY_LIGHT, rng.randf())
+			tint = tint.darkened(rng.randf() * 0.08)
+			# a small per-pad lift keeps overlapping pads from z-fighting
+			var pos := Vector3(px, GiantLand.WATER + 0.045 + rng.randf_range(0.002, 0.02), pz)
+			pads.put(pos, rng.randf() * TAU, size, 1.0, tint)
+			if rng.randf() < 0.05:
+				var flower_tint := FLOWER_WHITE.lerp(FLOWER_PINK, rng.randf())
+				blooms.put(pos + Vector3(0.0, 0.05, 0.0), rng.randf() * TAU,
+					size * 0.22, 0.7, flower_tint)
+	print("  lily patches: ", centres.size())
 	print("  lily pads: ", pads.build(parent, pad_mesh, mat, LILY_VISIBLE, false, 0.0, "props"))
 	print("  lily flowers: ", blooms.build(parent, bloom_mesh, mat, LILY_VISIBLE, false, 0.0, "props"))
 
