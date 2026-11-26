@@ -176,8 +176,11 @@ and the trees are `TreeGen` models drawn at 10x normal size on the islands.
   with UVs in metres, drawn by `shaders/boardwalk.gdshader`: planks with their own tone,
   grain, staggered joints, knots, nails, gaps and mossy edges, faded with distance),
   posts and railings in varied shades, 10x trees with LOD tiers, and reeds along the
-  shore and in the shallows. Tall grass and giant ferns cover the islands, dense
-  near the boardwalk and clustered under the trees.
+  shore and in the shallows. Patches of normal tall grass grow on the island ground
+  within ~160 m of the boardwalk, and giant ferns (`Meshes.fern` at ~15x: 7-16 m across,
+  6-10 m tall, casting shadows) in clumps round the land trees and in wooded stretches
+  beside the boardwalk; the grass shader's `sink` lets them sink fully out of sight by
+  their fade distance.
 - The road follows the land, but is lifted to `WATER + 1.4` over water; the deck is
   wooden and stands on posts. Land trees grow above `WATER + 1.4`; below
   that, down to `SWAMP_DEPTH` (7 m) of water, stand swamp trees (a tall, stout `SWAMP`

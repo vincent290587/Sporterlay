@@ -9,6 +9,7 @@ render_mode cull_disabled, world_vertex_coords;
 uniform vec2 wind_dir = vec2(0.8, 0.6);
 uniform float fade_start = 130.0;
 uniform float fade_end = 190.0;
+uniform float sink = 1.7;   // m the tallest plants sink by fade_end
 uniform vec3 head_color : source_color = vec3(0.85, 0.8, 0.7);   // flower heads (UV2.y > 0)
 
 varying vec3 wpos;
@@ -22,7 +23,7 @@ void vertex() {
 	float flutter = sin(TIME * 3.3 + VERTEX.x * 0.9 + VERTEX.z * 0.6);
 	VERTEX.xz += d * (gust * 0.28 + flutter * 0.04) * k * sway;
 	VERTEX.y -= gust * 0.1 * k * sway;
-	VERTEX.y -= smoothstep(fade_start, fade_end, distance(VERTEX, CAMERA_POSITION_WORLD)) * UV.y * 1.7;
+	VERTEX.y -= smoothstep(fade_start, fade_end, distance(VERTEX, CAMERA_POSITION_WORLD)) * UV.y * sink;
 	NORMAL = vec3(0.0, 1.0, 0.0);
 	wpos = VERTEX;
 }
