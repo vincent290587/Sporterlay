@@ -171,7 +171,7 @@ and the trees are `TreeGen` models drawn at 10x normal size on the islands.
   faster meander, kept inside the ring: about 15 km around.
 - **`GiantScenery`**: the ground mesh, a swamp-water plane (`shaders/swamp_water.gdshader`:
   tea-coloured, the bottom showing through with depth and bent by small waves, the sky
-  reflected by view angle, sun glitter, duckweed patches, lily pads and shore foam; the
+  reflected by view angle, sun glitter, duckweed patches and shore foam; the
   other worlds keep `water.gdshader`), the boardwalk deck (its own mesh
   with UVs in metres, drawn by `shaders/boardwalk.gdshader`: planks with their own tone,
   grain, staggered joints, knots, nails, gaps and mossy edges, faded with distance),

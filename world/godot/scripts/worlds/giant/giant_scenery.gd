@@ -23,8 +23,8 @@ const LILY_VISIBLE := 300.0
 const LILY_CHUNK := 24.0
 const LILY_MIN_DEPTH := 0.3        # shallow water, m below the surface
 const LILY_MAX_DEPTH := 3.0
-const LILY_DARK := Color(0.44, 0.68, 0.24)
-const LILY_LIGHT := Color(0.86, 1.0, 0.46)
+const LILY_DARK := Color(0.24, 0.42, 0.15)
+const LILY_LIGHT := Color(0.40, 0.62, 0.26)
 const FLOWER_WHITE := Color(1.0, 0.96, 0.92)
 const FLOWER_PINK := Color(1.0, 0.68, 0.76)
 

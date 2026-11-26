@@ -5,7 +5,7 @@
 //   colour looking down), darker under the trees' shadows
 // - refraction: the ground and roots below show through, bent by the waves, fading
 //   into murk with depth
-// - duckweed drifting in sheltered patches, lily pads in clusters, foam at the shore
+// - duckweed drifting in sheltered patches, foam at the shore
 // Patterns fade out with distance (fwidth) so they don't shimmer.
 shader_type spatial;
 render_mode cull_back, depth_draw_opaque;
@@ -20,7 +20,6 @@ uniform vec3 murk = vec3(0.05, 0.12, 0.12);
 uniform vec3 sky_top = vec3(0.20, 0.42, 0.55);
 uniform vec3 sky_horizon = vec3(0.72, 0.86, 0.82);
 uniform vec3 weed = vec3(0.42, 0.58, 0.16);
-uniform vec3 pad = vec3(0.24, 0.44, 0.16);
 uniform float clarity = 2.6;    // m of water before the bottom is mostly gone
 
 varying vec3 wpos;
@@ -33,34 +32,6 @@ float h2(vec2 p) {
 float waves(vec2 p, float t) {
 	return h2(p * 0.22 + vec2(t * 0.05, t * 0.03)) * 0.65
 		+ h2(p * 0.8 - vec2(t * 0.03, -t * 0.07)) * 0.35;
-}
-
-// lily pads: one per cell where the cluster mask allows; returns coverage and the
-// pad's id. A disc with a wedge cut out.
-vec2 lily(vec2 p, float mask) {
-	vec2 cell = floor(p);
-	float best = 0.0;
-	float id = 0.0;
-	for (int y = -1; y <= 1; y++) {
-		for (int x = -1; x <= 1; x++) {
-			vec2 c = cell + vec2(float(x), float(y));
-			float r = hash12(c);
-			if (r > mask) {
-				continue;
-			}
-			vec2 o = vec2(hash12(c + 3.7), hash12(c + 9.1)) * 0.6 + 0.2;
-			float size = 0.28 + 0.2 * hash12(c + 5.5);
-			vec2 d = p - (c + o);
-			float ang = atan(d.y, d.x) + hash12(c + 1.3) * 6.283;
-			float wedge = smoothstep(0.0, 0.08, abs(sin(ang * 0.5)) - 0.06);
-			float disc = 1.0 - smoothstep(size - 0.03, size, length(d));
-			if (disc * wedge > best) {
-				best = disc * wedge;
-				id = r;
-			}
-		}
-	}
-	return vec2(best, id);
 }
 
 void vertex() {
@@ -129,18 +100,10 @@ void fragment() {
 	float dw = cover * mix(1.0, smoothstep(0.3, 0.55, specks), near * 0.8);
 	vec3 weed_c = srgb_to_linear(weed * (0.85 + 0.3 * vnoise(p * 0.7)));
 
-	// lily pads in clusters
-	float pads_mask = smoothstep(0.55, 0.75, vnoise(p * 0.02 + 40.0)) * 0.45 + shallow_side * 0.15;
-	vec2 lp = lily(p * 0.55, pads_mask);
-	float lp_detail = 1.0 - smoothstep(0.4, 1.2, fwidth(p.x * 0.55));
-	float padc = lp.x * lp_detail;
-	vec3 pad_c = srgb_to_linear(pad * (0.8 + 0.4 * lp.y));
-
-	float solid = max(dw * 0.9, padc);
-	vec3 top = mix(weed_c, pad_c, step(dw * 0.9, padc));
-	// surface plants are lit like ground: they stay out of the reflection
-	ALBEDO = mix(c, top, solid);
-	EMISSION = (lit_below + sun) * (1.0 - solid);
+	// duckweed only: surface plants stay out of the reflection
+	float plant = dw * 0.9;
+	ALBEDO = mix(c, weed_c, plant);
+	EMISSION = (lit_below + sun) * (1.0 - plant);
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }
