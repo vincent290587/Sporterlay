@@ -19,6 +19,14 @@ const TREE_VISIBLE := 6200.0
 const TREE_CHUNK := 200.0
 const REEDS_CHUNK := 32.0
 const REEDS_VISIBLE := 350.0
+const LILY_VISIBLE := 300.0
+const LILY_CHUNK := 24.0
+const LILY_MIN_DEPTH := 0.3        # shallow water, m below the surface
+const LILY_MAX_DEPTH := 3.0
+const LILY_DARK := Color(0.30, 0.52, 0.22)
+const LILY_LIGHT := Color(0.72, 0.92, 0.46)
+const FLOWER_WHITE := Color(1.0, 0.96, 0.92)
+const FLOWER_PINK := Color(1.0, 0.68, 0.76)
 
 const WOOD := Color(0.52, 0.38, 0.25)
 const RUST := Color(0.64, 0.40, 0.24)
@@ -56,6 +64,7 @@ static func build(parent: Node3D, land: GiantLand, route: Route, seed: int, sun:
 	_giant_trees(parent, land, route, rng, toon)
 	_reeds(parent, land, route, rng, grass_mat)
 	_piers(parent, land, route, rng, toon)
+	_lily_pads(parent, land, route, rng, toon)
 
 
 static func _mesh(parent: Node3D, mesh: Mesh, mat: Material, shadows: bool) -> void:
@@ -324,6 +333,82 @@ static func _reeds(parent: Node3D, land: GiantLand, route: Route,
 		var tint := Color(0.58, 0.62, 0.30).lerp(Color(0.72, 0.60, 0.32), rng.randf())
 		inst.put(Vector3(px, h, pz), rng.randf() * TAU, rng.randf_range(0.8, 1.35), rng.randf_range(1.2, 2.1), tint)
 	print("  reeds: ", inst.build(parent, Meshes.reeds_leaning(rng), mat, REEDS_VISIBLE, false, 0.0, "reeds"))
+
+## Lily pads in calm shallow water: flat discs with a wedge-shaped notch, a few
+## darker/lighter green tints, and a small white/pink flower on about 5 % of them.
+## Clustered by a patch noise field, kept off the boardwalk. Unit pad radius 0.5,
+## so the instance's x/z scale is the pad's width in metres.
+static func _pad_mesh(rng: RandomNumberGenerator) -> ArrayMesh:
+	var b := MeshBuilder.new()
+	var notch := rng.randf_range(0.28, 0.44)   # half the notch's angle (rad)
+	var a0 := rng.randf() * TAU
+	var segs := 18
+	var r := 0.5
+	var a_start := a0 + notch
+	var a_end := a0 + TAU - notch
+	var center := b.add(Vector3(0.0, 0.012, 0.0), Vector3.UP, Color(1.0, 1.0, 1.0))
+	var ring := PackedInt32Array()
+	for k in segs:
+		var f := float(k) / (segs - 1)
+		var a := lerpf(a_start, a_end, f)
+		var d := Vector3(cos(a), 0.0, sin(a))
+		var rr := r * rng.randf_range(0.94, 1.05)
+		ring.append(b.add(d * rr + Vector3(0.0, rng.randf_range(0.0, 0.025), 0.0),
+			Vector3.UP, Color(0.78, 0.90, 0.66)))
+	for k in range(segs - 1):
+		b.tri(center, ring[k], ring[k + 1])
+	return b.commit()
+
+## A small water-lily bloom: five flat petals round a golden heart, unit radius
+## ~0.55. The instance colour tints the petals white or pink.
+static func _lily_flower_mesh(rng: RandomNumberGenerator) -> ArrayMesh:
+	var b := MeshBuilder.new()
+	var white := Color.WHITE
+	var gold := Color(1.0, 0.86, 0.45)
+	var center := b.add(Vector3(0.0, 0.10, 0.0), Vector3.UP, gold)
+	var ring := PackedInt32Array()
+	for k in 10:
+		var a := TAU * k / 10 + rng.randf_range(-0.08, 0.08)
+		var rr := 0.55 if k % 2 == 0 else 0.24   # five petals
+		ring.append(b.add(Vector3(cos(a) * rr, 0.11 + rng.randf_range(0.0, 0.03),
+			sin(a) * rr), Vector3.UP, white))
+	for k in 10:
+		b.tri(center, ring[k], ring[(k + 1) % 10])
+	return b.commit()
+
+static func _lily_pads(parent: Node3D, land: GiantLand, route: Route,
+		rng: RandomNumberGenerator, mat: Material) -> void:
+	var pads := Instancer.new(LILY_CHUNK)
+	var blooms := Instancer.new(LILY_CHUNK)
+	var patch := FastNoiseLite.new()
+	patch.seed = seed_for(rng)
+	patch.frequency = 0.035
+	patch.fractal_octaves = 3
+	var pad_mesh := _pad_mesh(rng)
+	var bloom_mesh := _lily_flower_mesh(rng)
+	for _k in 90000:
+		var px := rng.randf_range(-GiantLand.HALF + 40.0, GiantLand.HALF - 40.0)
+		var pz := rng.randf_range(-GiantLand.HALF + 40.0, GiantLand.HALF - 40.0)
+		var h := land.natural(px, pz)
+		var depth := GiantLand.WATER - h
+		if depth < LILY_MIN_DEPTH or depth > LILY_MAX_DEPTH:
+			continue
+		if _road_distance(route, px, pz) < Route.HALF_WIDTH + 1.5:
+			continue
+		var cluster := patch.get_noise_2d(px, pz) * 0.5 + 0.5
+		if cluster < 0.52:
+			continue
+		var size := rng.randf_range(0.6, 1.6)   # width across, m
+		var tint := LILY_DARK.lerp(LILY_LIGHT, rng.randf())
+		tint = tint.darkened(rng.randf() * 0.16)
+		var pos := Vector3(px, GiantLand.WATER + 0.045, pz)
+		pads.put(pos, rng.randf() * TAU, size, 1.0, tint)
+		if rng.randf() < 0.05:
+			var flower_tint := FLOWER_WHITE.lerp(FLOWER_PINK, rng.randf())
+			blooms.put(pos + Vector3(0.0, 0.02, 0.0), rng.randf() * TAU,
+				size * 0.22, 0.7, flower_tint)
+	print("  lily pads: ", pads.build(parent, pad_mesh, mat, LILY_VISIBLE, false, 0.0, "props"))
+	print("  lily flowers: ", blooms.build(parent, bloom_mesh, mat, LILY_VISIBLE, false, 0.0, "props"))
 
 
 const ROAD_CELL := 40.0

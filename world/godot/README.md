@@ -184,6 +184,8 @@ and the trees are `TreeGen` models drawn at 10x normal size on the islands.
   cypress knees (`_roots_mesh`, three variants), with ripples drifting out where it
   meets the water (`shaders/ripple.gdshader`, also at the boardwalk posts). Wet trees
   keep their root spread clear of the road.
+  Real lily pads (notched discs, 0.6-1.6 m across, about 5 % with a white or pink
+  flower) sit in clusters in shallow water off the boardwalk, out to ~300 m.
 
 ## How it connects to Sporterlay
 
