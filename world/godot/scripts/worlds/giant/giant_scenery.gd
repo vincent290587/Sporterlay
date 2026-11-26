@@ -28,6 +28,13 @@ const LILY_LIGHT := Color(0.40, 0.62, 0.26)
 const FLOWER_WHITE := Color(1.0, 0.96, 0.92)
 const FLOWER_PINK := Color(1.0, 0.68, 0.76)
 
+const GRASS_CHUNK := 16.0
+const GRASS_VISIBLE := 170.0
+const GRASS_REACH := 120.0
+const GRASS_PER_SAMPLE := 80       # clumps per grass patch
+const FERNS_CHUNK := 100.0
+const FERNS_VISIBLE := 500.0
+
 const WOOD := Color(0.52, 0.38, 0.25)
 const RUST := Color(0.64, 0.40, 0.24)
 const SWAMP_DEPTH := 7.0         # swamp trees stand in water up to this deep
@@ -41,7 +48,7 @@ const SWAMP_LIGHT := Color(0.50, 0.56, 0.28)
 
 ## `sun` is the sun light (the water's glitter points at it).
 static func build(parent: Node3D, land: GiantLand, route: Route, seed: int, sun: DirectionalLight3D) -> void:
-	for c in [["trees", 1.0], ["reeds", 0.65], ["props", 0.5]]:
+	for c in [["trees", 1.0], ["reeds", 0.65], ["props", 0.5], ["grass", 0.9], ["ferns", 0.4]]:
 		Lod.category(c[0], c[1])
 	var toon := ShaderMaterial.new()
 	toon.shader = TOON
@@ -58,10 +65,22 @@ static func build(parent: Node3D, land: GiantLand, route: Route, seed: int, sun:
 	Lod.add_param("reeds", grass_mat, "fade_start", 120.0)
 	Lod.add_param("reeds", grass_mat, "fade_end", 190.0)
 
+	var tall_grass_mat := ShaderMaterial.new()
+	tall_grass_mat.shader = GRASS
+	Lod.add_param("grass", tall_grass_mat, "fade_start", 130.0)
+	Lod.add_param("grass", tall_grass_mat, "fade_end", 190.0)
+
+	var fern_mat := ShaderMaterial.new()
+	fern_mat.shader = GRASS
+	Lod.add_param("ferns", fern_mat, "fade_start", 360.0)
+	Lod.add_param("ferns", fern_mat, "fade_end", 500.0)
+
 	_index_road(route)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed + 1
 	_giant_trees(parent, land, route, rng, toon)
+	_tall_grass(parent, land, route, rng, tall_grass_mat)
+	_giant_ferns(parent, land, route, rng, fern_mat)
 	_reeds(parent, land, route, rng, grass_mat)
 	_piers(parent, land, route, rng, toon)
 	_lily_pads(parent, land, route, rng, toon)
@@ -333,6 +352,138 @@ static func _reeds(parent: Node3D, land: GiantLand, route: Route,
 		var tint := Color(0.58, 0.62, 0.30).lerp(Color(0.72, 0.60, 0.32), rng.randf())
 		inst.put(Vector3(px, h, pz), rng.randf() * TAU, rng.randf_range(0.8, 1.35), rng.randf_range(1.2, 2.1), tint)
 	print("  reeds: ", inst.build(parent, Meshes.reeds_leaning(rng), mat, REEDS_VISIBLE, false, 0.0, "reeds"))
+
+## Tall grass on the islands: normal-size clumps above the reed band, dense
+## near the boardwalk and patchy from a noise field, off steep ground and the road.
+static func _tall_grass(parent: Node3D, land: GiantLand, route: Route,
+		rng: RandomNumberGenerator, mat: Material) -> void:
+	var inst := Instancer.new(GRASS_CHUNK)
+	var patches := FastNoiseLite.new()
+	patches.seed = seed_for(rng)
+	patches.frequency = 0.055
+	patches.fractal_octaves = 2
+	var hw := Route.HALF_WIDTH
+	var e := 3.0
+	# a dense patch at the first land above the reed band on each side of the
+	# boardwalk; the patch noise breaks the shore into stretches
+	for m in range(0, route.count(), 6):
+		var p := route.points[m]
+		var t := route.tangent_index(m)
+		var right := Vector3(-t.z, 0.0, t.x)
+		for sgn: float in [-1.0, 1.0]:
+			var cx := 0.0
+			var cz := 0.0
+			var h := 0.0
+			var found := false
+			for k in range(0, 31):
+				var off := hw + 1.0 + k * 4.0
+				var x := p.x + right.x * sgn * off
+				var z := p.z + right.z * sgn * off
+				var hh := land.natural(x, z)
+				if hh < GiantLand.WATER + 1.0 or hh > 30.0:
+					continue
+				var nx := land.natural(x - e, z) - land.natural(x + e, z)
+				var nz := land.natural(x, z - e) - land.natural(x, z + e)
+				var ny := (2.0 * e) / sqrt(nx * nx + nz * nz + 4.0 * e * e)
+				if ny < 0.78:
+					continue
+				if _road_distance(route, x, z) < hw + 1.0:
+					continue
+				cx = x
+				cz = z
+				h = hh
+				found = true
+				break
+			if not found:
+				continue
+			var dense := smoothstep(0.12, 0.45, patches.get_noise_2d(cx, cz))
+			var near := 1.0 - smoothstep(20.0, 100.0, _road_distance(route, cx, cz))
+			var shore := 1.0 - smoothstep(GiantLand.WATER + 1.5, GiantLand.WATER + 8.0, h)
+			if rng.randf() > dense * (0.55 + 0.35 * near + 0.25 * shore) + 0.15:
+				continue
+			var radius := rng.randf_range(5.0, 9.0)
+			for _c in GRASS_PER_SAMPLE:
+				var dist := radius * rng.randf() * rng.randf()   # denser in the middle
+				var a := rng.randf() * TAU
+				var px := cx + cos(a) * dist
+				var pz := cz + sin(a) * dist
+				var hc := land.natural(px, pz)
+				if hc < GiantLand.WATER + 1.0 or hc > 30.0:
+					continue
+				var nx2 := land.natural(px - e, pz) - land.natural(px + e, pz)
+				var nz2 := land.natural(px, pz - e) - land.natural(px, pz + e)
+				var ny2 := (2.0 * e) / sqrt(nx2 * nx2 + nz2 * nz2 + 4.0 * e * e)
+				if ny2 < 0.78:
+					continue
+				if _road_distance(route, px, pz) < hw + 1.0:
+					continue
+				var tint := land.color_at(px, pz, hc, ny2)
+				tint = tint.lerp(Color(0.42, 0.66, 0.30), 0.65).darkened(rng.randf() * 0.12)
+				inst.put(Vector3(px, hc, pz), rng.randf() * TAU,
+					rng.randf_range(0.8, 1.3), rng.randf_range(0.8, 1.1), tint)
+	print("  grass: ", inst.build(parent, Meshes.grass(rng, Meshes.GRASS_TALL), mat, GRASS_VISIBLE, false, 0.0, "grass"))
+
+## Giant ferns: `Meshes.fern` at roughly 10x height, in clumps on the wooded
+## islands, clear of the boardwalk by their fronds' reach.
+static func _giant_ferns(parent: Node3D, land: GiantLand, route: Route,
+		rng: RandomNumberGenerator, mat: Material) -> void:
+	var inst := Instancer.new(FERNS_CHUNK)
+	var forest := FastNoiseLite.new()
+	forest.seed = seed_for(rng)
+	forest.frequency = 0.006
+	forest.fractal_octaves = 3
+	var centres := PackedVector2Array()
+	var hw := Route.HALF_WIDTH
+	# clumps near the wooded banks: sample bands beside the boardwalk and keep
+	# them where the forest noise makes a wooded patch
+	for m in range(0, route.count(), 6):
+		var p := route.points[m]
+		var t := route.tangent_index(m)
+		var right := Vector3(-t.z, 0.0, t.x)
+		for sgn: float in [-1.0, 1.0]:
+			for s: float in [0.12, 0.32, 0.55, 0.78, 0.95]:
+				var off := hw + 8.0 + s * 100.0
+				var px := p.x + right.x * sgn * off
+				var pz := p.z + right.z * sgn * off
+				var h := land.natural(px, pz)
+				if h < GiantLand.WATER + 1.0 or h > 30.0:
+					continue
+				var e := 3.0
+				var nx := land.natural(px - e, pz) - land.natural(px + e, pz)
+				var nz := land.natural(px, pz - e) - land.natural(px, pz + e)
+				var ny := (2.0 * e) / sqrt(nx * nx + nz * nz + 4.0 * e * e)
+				if ny < 0.72:
+					continue
+				if _road_distance(route, px, pz) < hw + 8.0:
+					continue
+				var dense := smoothstep(0.12, 0.45, forest.get_noise_2d(px, pz))
+				if rng.randf() > dense * 0.85 + 0.08:
+					continue
+				centres.append(Vector2(px, pz))
+	for c: Vector2 in centres:
+		var radius := rng.randf_range(3.0, 11.0)
+		for _f in rng.randi_range(6, 18):
+			var dist := radius * rng.randf() * rng.randf()
+			var a := rng.randf() * TAU
+			var px := c.x + cos(a) * dist
+			var pz := c.y + sin(a) * dist
+			var h := land.natural(px, pz)
+			if h < GiantLand.WATER + 1.0 or h > 30.0:
+				continue
+			var e := 3.0
+			var nx := land.natural(px - e, pz) - land.natural(px + e, pz)
+			var nz := land.natural(px, pz - e) - land.natural(px, pz + e)
+			var ny := (2.0 * e) / sqrt(nx * nx + nz * nz + 4.0 * e * e)
+			if ny < 0.72:
+				continue
+			var sxz := rng.randf_range(4.0, 6.0)   # across ~7-11 m
+			var sy := rng.randf_range(7.0, 11.0)   # tall ~3-5 m
+			var radius_m := sxz * 0.9
+			if _road_distance(route, px, pz) < hw + radius_m + 1.0:
+				continue
+			var tint := Color(0.26, 0.45, 0.18).lerp(Color(0.48, 0.72, 0.32), rng.randf())
+			inst.put(Vector3(px, h, pz), rng.randf() * TAU, sxz, sy, tint)
+	print("  giant ferns: ", inst.build(parent, Meshes.fern(rng), mat, FERNS_VISIBLE, false, 0.0, "ferns"))
 
 ## Lily pads in calm shallow water: flat discs with a wedge-shaped notch, a few
 ## darker/lighter green tints, and a small white/pink flower on about 5 % of them.
