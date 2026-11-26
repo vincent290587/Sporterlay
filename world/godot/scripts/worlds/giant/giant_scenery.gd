@@ -56,6 +56,7 @@ static func build(parent: Node3D, land: GiantLand, route: Route, seed: int, sun:
 		Lod.category(c[0], c[1])
 	var toon := ShaderMaterial.new()
 	toon.shader = TOON
+	land.carve(route)
 	_mesh(parent, land.build_mesh(), toon, true)
 	_water(parent, sun)
 	var deck := ShaderMaterial.new()
@@ -216,7 +217,7 @@ static func _piers(parent: Node3D, land: GiantLand, route: Route, rng: RandomNum
 		var right := Vector3(-t.z, 0.0, t.x)
 		for sgn: float in [-1.0, 1.0]:
 			var off := right * (hw + 0.15) * sgn
-			var ground := land.natural(p.x + off.x, p.z + off.z)
+			var ground := land.drawn(p.x + off.x, p.z + off.z)
 			var foot := maxf(ground, GiantLand.WATER) - 0.4
 			if ground < GiantLand.WATER - 0.2:   # the post's radius is ~0.3 m
 				ripples.put(Vector3(p.x + off.x, GiantLand.WATER + 0.05, p.z + off.z), rng.randf() * TAU, 1.5, 1.0, Color.WHITE)
@@ -261,7 +262,7 @@ static func _giant_trees(parent: Node3D, land: GiantLand, route: Route,
 		var tint := Color(1.0, 1.0, 1.0).lerp(Color(1.12, 1.08, 0.78), rng.randf() * 0.55)
 		tint = tint.darkened(rng.randf() * 0.12)
 		var s := rng.randf_range(0.75, 1.35) * 10.0
-		var pos := Vector3(px, h, pz)
+		var pos := Vector3(px, minf(h, land.drawn(px, pz)), pz)   # the drawn ground, road carved in
 		if wet:
 			var snag := rng.randf() < 0.14
 			# trunk radius at the water line (m); roots and knees reach ~4 of them
@@ -358,7 +359,7 @@ static func _reeds(parent: Node3D, land: GiantLand, route: Route,
 	for _k in 40000:
 		var px := rng.randf_range(-GiantLand.HALF + 40.0, GiantLand.HALF - 40.0)
 		var pz := rng.randf_range(-GiantLand.HALF + 40.0, GiantLand.HALF - 40.0)
-		var h := land.natural(px, pz)
+		var h := land.drawn(px, pz)
 		if h < GiantLand.WATER - 0.8 or h > GiantLand.WATER + 2.6:
 			continue
 		if _road_distance(route, px, pz) < Route.HALF_WIDTH + 3.0:
@@ -388,7 +389,7 @@ static func _tall_grass(parent: Node3D, land: GiantLand, route: Route,
 			var side := hw + 1.0 + u * u * GRASS_REACH
 			var px := p.x + t.x * rng.randf_range(-1.0, 1.0) + right.x * side * signf(u)
 			var pz := p.z + t.z * rng.randf_range(-1.0, 1.0) + right.z * side * signf(u)
-			var h := land.natural(px, pz)
+			var h := land.drawn(px, pz)
 			if h < GiantLand.WATER + 1.0 or h > 30.0:
 				continue
 			var ny := _ground_ny(land, px, pz)
@@ -406,7 +407,7 @@ static func _tall_grass(parent: Node3D, land: GiantLand, route: Route,
 			var side := rng.randf_range(GRASS_REACH - 20.0, GRASS_FAR_REACH) * (1.0 if rng.randf() < 0.5 else -1.0)
 			var px := p.x + t.x * rng.randf_range(-1.0, 1.0) + right.x * side
 			var pz := p.z + t.z * rng.randf_range(-1.0, 1.0) + right.z * side
-			var h := land.natural(px, pz)
+			var h := land.drawn(px, pz)
 			if h < GiantLand.WATER + 1.0 or h > 30.0:
 				continue
 			var ny := _ground_ny(land, px, pz)
@@ -435,7 +436,7 @@ static func _clump_base(land: GiantLand, x: float, z: float, r: float) -> float:
 ## Green island ground for grass and ferns: above the reeds' shore band, below the
 ## rock, and not steep.
 static func _grass_ground(land: GiantLand, x: float, z: float, min_ny := 0.78) -> bool:
-	var h := land.natural(x, z)
+	var h := land.drawn(x, z)
 	if h < GiantLand.WATER + 1.0 or h > 30.0:
 		return false
 	return _ground_ny(land, x, z) >= min_ny
@@ -444,8 +445,8 @@ static func _grass_ground(land: GiantLand, x: float, z: float, min_ny := 0.78) -
 ## The y of the ground's normal at (x, z), from 3 m central differences.
 static func _ground_ny(land: GiantLand, x: float, z: float) -> float:
 	var e := 3.0
-	var nx := land.natural(x - e, z) - land.natural(x + e, z)
-	var nz := land.natural(x, z - e) - land.natural(x, z + e)
+	var nx := land.drawn(x - e, z) - land.drawn(x + e, z)
+	var nz := land.drawn(x, z - e) - land.drawn(x, z + e)
 	return (2.0 * e) / sqrt(nx * nx + nz * nz + 4.0 * e * e)
 
 

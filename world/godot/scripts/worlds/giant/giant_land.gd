@@ -11,6 +11,8 @@ const FAR := 11500.0        # skirt reaches this radius (camera far is 12 km)
 const RING := 3000.0        # mountains start rising here
 const SKIRT_LEVELS := 32
 const WATER := 2.0          # water surface (m)
+const CARVE_FULL := Route.HALF_WIDTH + 7.0    # ground fully under the deck out to here
+const CARVE_REACH := Route.HALF_WIDTH + 15.0  # and back to natural by here
 
 const GREEN_DEEP := Color(0.14, 0.34, 0.18)
 const GREEN_LIGHT := Color(0.38, 0.60, 0.30)
@@ -24,7 +26,7 @@ var islands := FastNoiseLite.new()
 var detail := FastNoiseLite.new()
 var ridges := FastNoiseLite.new()
 var tint := FastNoiseLite.new()
-var grid := PackedFloat32Array()   # heights at the mesh's grid points, filled by build_mesh
+var grid := PackedFloat32Array()   # heights at the mesh's grid points (carve / build_mesh)
 
 func setup(seed: int) -> void:
 	islands.seed = seed
@@ -53,7 +55,7 @@ func natural(x: float, z: float) -> float:
 
 ## The drawn ground's height at (x, z): the mesh's triangle there, which can sit up to
 ## ~0.5 m off `natural` between grid points (plants use this so they don't float).
-## Exact once `build_mesh` has cached the grid; `natural` before that.
+## Includes the road carved in (`carve`); `natural` before the grid exists.
 func drawn(x: float, z: float) -> float:
 	var fx := (x + HALF) / STEP
 	var fz := (z + HALF) / STEP
@@ -79,22 +81,62 @@ func color_at(x: float, z: float, h: float, ny: float) -> Color:
 	c = c.lerp(SNOW, smoothstep(300.0, 380.0, h) * smoothstep(0.55, 0.72, ny))
 	return c
 
+## The grid heights with the road laid in: where the ground beside the boardwalk is
+## above its deck (the road's profile is smoothed and grade-capped, so it cuts
+## through hills), it's lowered to just under the deck out to CARVE_FULL and blended
+## back by CARVE_REACH. Over water the deck stands above the ground and nothing changes.
+func carve(route: Route) -> void:
+	grid.resize(N * N)
+	var road_d := PackedFloat32Array()
+	var road_h := PackedFloat32Array()
+	road_d.resize(N * N)
+	road_h.resize(N * N)
+	for j in N:
+		var z := -HALF + j * STEP
+		for i in N:
+			grid[j * N + i] = natural(-HALF + i * STEP, z)
+			road_d[j * N + i] = CARVE_REACH
+	var reach := int(ceil(CARVE_REACH / STEP))
+	for m in route.count():
+		var p := route.points[m]
+		var ci := int(round((p.x + HALF) / STEP))
+		var cj := int(round((p.z + HALF) / STEP))
+		for j in range(maxi(cj - reach, 0), mini(cj + reach, N - 1) + 1):
+			var dz := -HALF + j * STEP - p.z
+			for i in range(maxi(ci - reach, 0), mini(ci + reach, N - 1) + 1):
+				var dx := -HALF + i * STEP - p.x
+				var d := sqrt(dx * dx + dz * dz)
+				var k := j * N + i
+				if d < road_d[k]:
+					road_d[k] = d
+					road_h[k] = p.y
+	for k in N * N:
+		if road_d[k] < CARVE_REACH:
+			var t := smoothstep(CARVE_FULL, CARVE_REACH, road_d[k])
+			grid[k] = minf(grid[k], lerpf(road_h[k] - 0.4, grid[k], t))
+
+
 func _grid_normal(i: int, j: int) -> Vector3:
-	var x := -HALF + i * STEP
-	var z := -HALF + j * STEP
-	var e := STEP
-	return Vector3(natural(x - e, z) - natural(x + e, z), 2.0 * e,
-		natural(x, z - e) - natural(x, z + e)).normalized()
+	var i0 := maxi(i - 1, 0)
+	var i1 := mini(i + 1, N - 1)
+	var j0 := maxi(j - 1, 0)
+	var j1 := mini(j + 1, N - 1)
+	# central differences over 2 cells (one at the edges), scaled to a 2-cell span
+	return Vector3((grid[j * N + i0] - grid[j * N + i1]) * 2.0 / (i1 - i0), 2.0 * STEP,
+		(grid[j0 * N + i] - grid[j1 * N + i]) * 2.0 / (j1 - j0)).normalized()
 
 func build_mesh() -> ArrayMesh:
 	var b := MeshBuilder.new()
-	grid.resize(N * N)
+	if grid.is_empty():   # no road carved in
+		grid.resize(N * N)
+		for j in N:
+			for i in N:
+				grid[j * N + i] = natural(-HALF + i * STEP, -HALF + j * STEP)
 	for j in N:
 		var z := -HALF + j * STEP
 		for i in N:
 			var x := -HALF + i * STEP
-			var h := natural(x, z)
-			grid[j * N + i] = h
+			var h := grid[j * N + i]
 			var n := _grid_normal(i, j)
 			b.add(Vector3(x, h, z), n, color_at(x, z, h, n.y))
 	for j in N - 1:
