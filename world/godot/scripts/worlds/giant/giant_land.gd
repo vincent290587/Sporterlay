@@ -24,6 +24,7 @@ var islands := FastNoiseLite.new()
 var detail := FastNoiseLite.new()
 var ridges := FastNoiseLite.new()
 var tint := FastNoiseLite.new()
+var grid := PackedFloat32Array()   # heights at the mesh's grid points, filled by build_mesh
 
 func setup(seed: int) -> void:
 	islands.seed = seed
@@ -50,6 +51,23 @@ func natural(x: float, z: float) -> float:
 	h += m * (170.0 + 560.0 * (ridges.get_noise_2d(x, z) * 0.5 + 0.5))
 	return h
 
+## The drawn ground's height at (x, z): the mesh's triangle there, which can sit up to
+## ~0.5 m off `natural` between grid points (plants use this so they don't float).
+## Exact once `build_mesh` has cached the grid; `natural` before that.
+func drawn(x: float, z: float) -> float:
+	var fx := (x + HALF) / STEP
+	var fz := (z + HALF) / STEP
+	var i := floori(fx)
+	var j := floori(fz)
+	if grid.is_empty() or i < 0 or j < 0 or i >= N - 1 or j >= N - 1:
+		return natural(x, z)
+	var u := fx - i
+	var v := fz - j
+	var k := j * N + i
+	if u + v <= 1.0:   # triangle k, k+1, k+N
+		return grid[k] + (grid[k + 1] - grid[k]) * u + (grid[k + N] - grid[k]) * v
+	return grid[k + N + 1] + (grid[k + N] - grid[k + N + 1]) * (1.0 - u) + (grid[k + 1] - grid[k + N + 1]) * (1.0 - v)
+
 func color_at(x: float, z: float, h: float, ny: float) -> Color:
 	var t := tint.get_noise_2d(x, z) * 0.5 + 0.5
 	var c := GREEN_DEEP.lerp(GREEN_LIGHT, smoothstep(0.25, 0.75, t))
@@ -70,11 +88,13 @@ func _grid_normal(i: int, j: int) -> Vector3:
 
 func build_mesh() -> ArrayMesh:
 	var b := MeshBuilder.new()
+	grid.resize(N * N)
 	for j in N:
 		var z := -HALF + j * STEP
 		for i in N:
 			var x := -HALF + i * STEP
 			var h := natural(x, z)
+			grid[j * N + i] = h
 			var n := _grid_normal(i, j)
 			b.add(Vector3(x, h, z), n, color_at(x, z, h, n.y))
 	for j in N - 1:

@@ -398,8 +398,9 @@ static func _tall_grass(parent: Node3D, land: GiantLand, route: Route,
 				continue
 			var tall := smoothstep(-0.3, 0.4, patches.get_noise_2d(px, pz))
 			var tint := land.color_at(px, pz, h, ny).lerp(Color(0.42, 0.66, 0.30), 0.5).darkened(rng.randf() * 0.12)
-			inst.put(Vector3(px, h, pz), rng.randf() * TAU,
-				rng.randf_range(0.8, 1.3), lerpf(0.6, 1.2, tall) * rng.randf_range(0.85, 1.1), tint)
+			var sxz := rng.randf_range(0.8, 1.3)
+			inst.put(Vector3(px, _clump_base(land, px, pz, 0.4 * sxz), pz), rng.randf() * TAU,
+				sxz, lerpf(0.6, 1.2, tall) * rng.randf_range(0.85, 1.1), tint)
 		# beyond the near grass: fewer, bigger clumps, so the far islands aren't bare lawn
 		for _k in GRASS_FAR_PER_SAMPLE:
 			var side := rng.randf_range(GRASS_REACH - 20.0, GRASS_FAR_REACH) * (1.0 if rng.randf() < 0.5 else -1.0)
@@ -413,11 +414,22 @@ static func _tall_grass(parent: Node3D, land: GiantLand, route: Route,
 				continue
 			var tall := smoothstep(-0.3, 0.4, patches.get_noise_2d(px, pz))
 			var tint := land.color_at(px, pz, h, ny).lerp(Color(0.42, 0.66, 0.30), 0.5).darkened(rng.randf() * 0.12)
-			far.put(Vector3(px, h, pz), rng.randf() * TAU,
-				rng.randf_range(2.6, 3.4), lerpf(0.7, 1.3, tall) * rng.randf_range(0.85, 1.1), tint)
+			var sxz := rng.randf_range(2.6, 3.4)
+			far.put(Vector3(px, _clump_base(land, px, pz, 0.4 * sxz), pz), rng.randf() * TAU,
+				sxz, lerpf(0.7, 1.3, tall) * rng.randf_range(0.85, 1.1), tint)
 	var mesh := Meshes.grass(rng, Meshes.GRASS_TALL)
 	print("  grass: ", inst.build(parent, mesh, mat, GRASS_VISIBLE, false, 0.0, "grass"),
 		" near, ", far.build(parent, mesh, far_mat, GRASS_FAR_VISIBLE, false, GRASS_VISIBLE - 30.0, "grass"), " far")
+
+
+## Where a plant `r` m across at its foot stands: the lowest drawn ground under that
+## footprint, so no side of it hangs in the air on a slope.
+static func _clump_base(land: GiantLand, x: float, z: float, r: float) -> float:
+	var y := land.drawn(x, z)
+	for k in 6:
+		var a := TAU * k / 6.0
+		y = minf(y, land.drawn(x + cos(a) * r, z + sin(a) * r))
+	return y
 
 
 ## Green island ground for grass and ferns: above the reeds' shore band, below the
@@ -481,7 +493,7 @@ static func _fern_clump(inst: Instancer, land: GiantLand, route: Route, rng: Ran
 		if _road_distance(route, px, pz) < Route.HALF_WIDTH + sxz * 0.9 + 1.0:
 			continue
 		var tint := Color(0.26, 0.45, 0.18).lerp(Color(0.48, 0.72, 0.32), rng.randf())
-		inst.put(Vector3(px, land.natural(px, pz), pz), rng.randf() * TAU, sxz, sy, tint)
+		inst.put(Vector3(px, _clump_base(land, px, pz, 1.0), pz), rng.randf() * TAU, sxz, sy, tint)
 
 ## Lily pads in calm shallow water: flat discs with a wedge-shaped notch, a few
 ## darker/lighter green tints, and a small white/pink flower on about 5 % of them.
