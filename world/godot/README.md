@@ -176,13 +176,16 @@ and the trees are `TreeGen` models drawn at 10x normal size on the islands.
   with UVs in metres, drawn by `shaders/boardwalk.gdshader`: planks with their own tone,
   grain, staggered joints, knots, nails, gaps and mossy edges, faded with distance),
   posts and railings in varied shades, 10x trees with LOD tiers, and reeds along the
-  shore and in the shallows. Patches of normal tall grass grow on the island ground
-  within ~160 m of the boardwalk, and giant ferns (`Meshes.fern` at 8-28x: ~12-55 m across,
+  shore and in the shallows. Normal tall grass carpets the island ground within ~200 m
+  of the boardwalk, with bigger clumps out to ~480 m so no bare ground shows, and giant ferns (`Meshes.fern` at 8-28x: ~12-55 m across,
   ~7-35 m tall, mostly mid-size, casting shadows) in clumps round the land trees and in wooded stretches
   beside the boardwalk; the grass shader's `sink` lets them sink fully out of sight by
   their fade distance.
 - The road follows the land, but is lifted to `WATER + 1.4` over water; the deck is
-  wooden and stands on posts. Land trees grow above `WATER + 1.4`; below
+  wooden and stands on posts. Its profile is smoothed and grade-capped, so over hills it
+  runs below the noise ground: `GiantLand.carve()` lowers the grid to 0.4 m under the deck
+  within ~10 m of the road, blending back by ~18 m (only ever lowering), and everything
+  on land is placed on `drawn()`, the mesh's own triangle heights. Land trees grow above `WATER + 1.4`; below
   that, down to `SWAMP_DEPTH` (7 m) of water, stand swamp trees (a tall, stout `SWAMP`
   profile, olive crowns) and dead snags, thinning out with depth. Each stands on prop roots and
   cypress knees (`_roots_mesh`, three variants), with ripples drifting out where it
