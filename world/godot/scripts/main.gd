@@ -19,7 +19,7 @@ extends Node3D
 ##   --auto-lod=on  let it adjust draw distances to the budget (off by default in --bench)
 ##   --fade=on      cross-fade between detail levels
 ## Keys: Esc quit, H hide the text, F3 frame rate, F4 detail levels, F11 fullscreen, F2 next world,
-## Up/Down manual power without Sporterlay.
+## Up/Down manual power without Sporterlay, M or Space mark a spot to fix later (see _mark).
 
 var worlds := {"valley": ValleyWorld, "riverlands": RiverWorld, "transylvania": TransWorld, "canyon": CanyonWorld, "endless": EndlessWorld, "giant": GiantWorld, "gallery": GalleryWorld}
 var cam_override := []
@@ -43,6 +43,9 @@ var _bench_skip := 2.0   # seconds to settle (shader compiles) before measuring
 var _shot := ""
 var _shot_frames := 90
 var _frame := 0
+var _flash := ""
+var _flash_left := 0.0
+var _last_mark := -10.0
 
 
 func _ready() -> void:
@@ -134,6 +137,9 @@ func _process(delta: float) -> void:
 	if show_lod:
 		fps += "\n" + lod.summary()
 	hud.text = "%s   %d W   %.1f km/h   %+.1f %%   %.2f km   [%s]" % [world_name.capitalize(), watts, rider.speed * 3.6, rider.grade, rider.odometer / 1000.0, src] + fps
+	if _flash_left > 0.0:
+		_flash_left -= delta
+		hud.text = _flash + "\n" + hud.text
 
 	if _bench > 0.0:
 		if _bench_skip > 0.0:
@@ -221,10 +227,54 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_F11:
 			var full := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
 			DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if full else DisplayServer.WINDOW_MODE_FULLSCREEN)
+		KEY_M, KEY_SPACE:
+			if not key.echo:
+				_mark()
 		KEY_UP:
 			manual_power = minf(manual_power + 10.0, 1500.0)
 		KEY_DOWN:
 			manual_power = maxf(manual_power - 10.0, 0.0)
+
+
+## Marks the current spot for later investigation: saves a screenshot to
+## <user data>/marks/<time>.png and appends to marks/marks.txt the world, seed,
+## distance, camera and a command line that brings the same view back. Presses
+## within 2 s of each other count once (a key held or hit twice by mistake).
+func _mark() -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - _last_mark < 2.0:
+		return
+	_last_mark = now
+	var dir := OS.get_user_data_dir().path_join("marks")
+	DirAccess.make_dir_recursive_absolute(dir)
+	var stamp := Time.get_datetime_string_from_system().replace(":", "-").replace("T", "_")
+	var png := dir.path_join(stamp + ".png")
+	var cam := rider.camera.global_transform
+	var eye := cam.origin
+	var look := eye - cam.basis.z * 20.0
+	var at := rider.distance
+	var cam_arg := "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f" % [eye.x, eye.y, eye.z, look.x, look.y, look.z]
+	var base := "godot --path world/godot -- --world=%s --seed=%d --size=1920x1080" % [world_name, seed]
+	var lines := [
+		"%s  %s seed %d at %.0f m (odometer %.2f km), %.1f km/h, %d fps" % [
+			stamp, world_name, seed, at, rider.odometer / 1000.0, rider.speed * 3.6, Engine.get_frames_per_second()],
+		"  screenshot  %s" % png,
+		"  ride view   %s --at=%.0f --shot=out.png" % [base, at],
+		"  exact view  %s --at=%.0f --cam=%s --shot=out.png" % [base, at, cam_arg],
+		"  detail      %s" % lod.summary().replace("\n", " | "),
+		""]
+	var path := dir.path_join("marks.txt")
+	var file := FileAccess.open(path, FileAccess.READ_WRITE if FileAccess.file_exists(path) else FileAccess.WRITE)
+	if file:
+		file.seek_end()
+		file.store_string("\n".join(lines) + "\n")
+		file.close()
+	# PNG encoding takes a while at 1080p: do it off the render thread
+	var image := get_viewport().get_texture().get_image()
+	WorkerThreadPool.add_task(func() -> void: image.save_png(png))
+	print("marked ", lines[0])
+	_flash = "Marked %.2f km for later" % (at / 1000.0)
+	_flash_left = 3.0
 
 
 func _args() -> Dictionary:

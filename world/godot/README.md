@@ -227,7 +227,7 @@ world and seed picked in the same submenu (a change restarts a running world). S
 Desktop, `C:\Tools\Godot` and similar, or the program chosen with *Choose the world program…*.
 It imports the project on the first start and closes the world when Sporterlay quits.
 
-Keys: **Esc** quit, **H** hide the status line, **F3** frame rate, **F4** detail levels, **F2** next world, **F11** fullscreen/windowed,
+Keys: **Esc** quit, **H** hide the status line, **F3** frame rate, **F4** detail levels, **F2** next world, **F11** fullscreen/windowed, **M** or **Space** mark the spot to fix later (a screenshot plus a line in `marks/marks.txt` in the user data folder with the world, seed, distance and two command lines that bring the view back: `--at=` for the ride view, `--at= --cam=` for the exact camera),
 **Up/Down** manual power while Sporterlay isn't sending.
 
 Options (after `--` when launching the editor binary, directly on an exported exe):
