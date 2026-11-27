@@ -125,6 +125,9 @@ func _load_world(at: float) -> void:
 
 
 func _process(delta: float) -> void:
+	if link.marks_pending > 0:
+		link.marks_pending = 0
+		_mark()
 	var watts := link.power if link.connected else manual_power
 	rider.advance(watts, delta)
 	if look_yaw != 0.0 or look_pitch != 0.0:
@@ -236,7 +239,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			manual_power = maxf(manual_power - 10.0, 0.0)
 
 
-## Marks the current spot for later investigation: saves a screenshot to
+## Marks the current spot for later investigation (M/Space, or a Click button in
+## Sporterlay through PowerLink): saves a screenshot to
 ## <user data>/marks/<time>.png and appends to marks/marks.txt the world, seed,
 ## distance, camera and a command line that brings the same view back. Presses
 ## within 2 s of each other count once (a key held or hit twice by mistake).

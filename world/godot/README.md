@@ -201,10 +201,12 @@ One way, and optional on both sides:
 
 ```
 Sporterlay ──UDP 127.0.0.1:47810, 4 Hz──▶ PowerLink ──▶ Rider (own bike physics) ──▶ camera on the Route
-            {"v":1,"power":245}            0 W after 2 s without a packet
+            {"v":1,"power":245,"mark":2}   0 W after 2 s without a packet
 ```
 
-- Sporterlay only sends raw power (tray → Extras → *Send power to the virtual world*).
+- Sporterlay only sends raw power (tray → Extras → *Send power to the virtual world*),
+  plus `mark`, a count of the "Mark this spot in the virtual world" Click-button presses
+  (bind one in tray → *Zwift Click buttons*); each rise marks the spot like **M**.
   Nothing comes back: the world's hills, grade and speed never reach Sporterlay or the
   trainer. ERG, gears and Sporterlay's own speed and distance are unaffected.
 - Sporterlay doesn't need the world, and the world doesn't need Sporterlay: without

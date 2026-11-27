@@ -68,6 +68,7 @@ ACTIONS = {
     "ramp_done": ("End ramp test (I'm done)", "Ramp done", "end_ramp_test"),
     "fan_up": ("Fan +10 %", "Fan +10%", "nudge_fan", +10),
     "fan_down": ("Fan −10 %", "Fan −10%", "nudge_fan", -10),
+    "world_mark": ("Mark this spot in the virtual world", "Mark spot", "mark_world"),
 }
 DEFAULT_CLICK_MAP = {
     "shift_up": "harder", "shift_down": "easier",
@@ -1264,6 +1265,13 @@ class App:
             self.world.close()
             self.world = None
             self.flash("Stopped sending power to the virtual world")
+
+    def mark_world(self):
+        if self.world is None:
+            self.flash("Not sending to the virtual world")
+            return
+        self.world.mark()
+        self.flash("Virtual world: spot marked")
 
     def _world_menu(self, vm, act):
         s = self.settings

@@ -1,8 +1,11 @@
 """Power out to a virtual world (the Godot project in `world/godot`) over UDP.
 
 Every tick (4 Hz) one JSON datagram goes to 127.0.0.1:<world_port>:
-    {"v": 1, "power": 245}
-`power` is the raw trainer power in W (0 when stale or not pedaling). It's one way:
+    {"v": 1, "power": 245, "mark": 2}
+`power` is the raw trainer power in W (0 when stale or not pedaling). `mark` counts
+the "mark this spot" presses (a Click button) since Sporterlay started, left out
+while 0; the world saves a mark each time it goes up, so a lost datagram loses
+nothing (the next one carries the same count). It's one way:
 nothing comes back, and Sporterlay's own riding (ERG, gears, speed) doesn't change.
 The world turns power into speed with its own physics. Sending to a port nobody
 listens on is harmless: Sporterlay never depends on the world running.
@@ -34,16 +37,24 @@ class WorldLink:
         self.addr = ("127.0.0.1", port)
         self._sock: Optional[socket.socket] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._sock.setblocking(False)
+        self.marks = 0
         log.info("Sending power to udp://%s:%d", *self.addr)
 
     def send(self, power: Optional[int]) -> None:
         if self._sock is None:
             return
-        msg = json.dumps({"v": 1, "power": power or 0}, separators=(",", ":")).encode()
+        data = {"v": 1, "power": power or 0}
+        if self.marks:
+            data["mark"] = self.marks
+        msg = json.dumps(data, separators=(",", ":")).encode()
         try:
             self._sock.sendto(msg, self.addr)
         except OSError as e:  # Windows: ICMP port unreachable from an earlier send, buffer full
             log.debug("World link send: %s", e)
+
+    def mark(self) -> None:
+        """Ask the world to mark the rider's spot (sent with the next tick)."""
+        self.marks += 1
 
     def close(self) -> None:
         if self._sock is not None:
